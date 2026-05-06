@@ -1,0 +1,82 @@
+<!-- Landing + search page -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atmos FC</title>
+
+    <!-- CSS stylesheet -->
+    <link rel="stylesheet" href="/frontend/css/styles.css">
+
+    <!-- Fonts -->
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg" href="/atmosfc-logo.svg">
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="index.html">Atmos</a>
+      <nav class="navbar">
+        <a href="results.html">Search</a>
+      </nav>
+    </header>
+
+    <main class="content">
+      <section class="hero">
+        <div>
+          <h1>Atmos FC</h1>
+          <p>Reddit match-thread sentiment mapped minute by minute, from the early nerves to the final whistle.</p>
+        </div>
+        <form class="search-panel" data-search-form>
+          <label>
+            Team or competition
+            <input name="q" type="search" placeholder="Arsenal, Barcelona, UCL">
+          </label>
+          <label>
+            Competition
+            <select name="competition">
+              <option value="">All supported</option>
+              <option value="PL">Premier League</option>
+              <option value="PD">La Liga</option>
+              <option value="BL1">Bundesliga</option>
+              <option value="SA">Serie A</option>
+              <option value="FL1">Ligue 1</option>
+              <option value="CL">UCL</option>
+              <option value="EL">UEL</option>
+              <option value="EC">UECL</option>
+            </select>
+          </label>
+          <label>
+            Season
+            <select name="season">
+              <option value="">Current</option>
+              <option value="2025">2025/26</option>
+              <option value="2024">2024/25</option>
+              <option value="2023">2023/24</option>
+              <option value="2022">2022/23</option>
+              <option value="2021">2021/22</option>
+              <option value="2020">2020/21</option>
+              <option value="2019">2019/20</option>
+              <option value="2018">2018/19</option>
+              <option value="2017">2017/18</option>
+              <option value="2016">2016/17</option>
+              <option value="2015">2015/16</option>
+            </select>
+          </label>
+          <button class="primary-button" type="submit">Search matches</button>
+        </form>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Recent matches</h2>
+        </div>
+        <div class="match-grid" data-recent></div>
+      </section>
+    </main>
+
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/index.js"></script>
+  </body>
+</html>

@@ -1,0 +1,61 @@
+<!-- Sentiment analysis output page -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atmos FC - Analysis</title>
+    
+    <!-- CSS stylesheet -->
+    <link rel="stylesheet" href="/frontend/css/styles.css">
+
+    <!-- Fonts -->
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="index.html">Atmos</a>
+      <nav class="navbar">
+        <a href="results.html">Search</a>
+      </nav>
+    </header>
+
+    <main class="content">
+      <section class="analysis-head">
+        <div>
+          <h1 data-match-title>Match analysis</h1>
+          <p data-match-meta></p>
+          <p class="status" data-status></p>
+        </div>
+        <div class="summary-grid" data-summary></div>
+      </section>
+
+      <section class="analysis-grid">
+        <article class="panel">
+          <h2>Sentiment Pulse</h2>
+          <div class="chart-wrap">
+            <canvas id="pulseChart"></canvas>
+          </div>
+        </article>
+
+        <aside class="panel">
+          <h2>Match Events</h2>
+          <ul class="timeline" data-events></ul>
+        </aside>
+
+        <article class="panel">
+          <h2>Half Split</h2>
+          <div class="half-grid" data-halves></div>
+        </article>
+
+        <article class="panel">
+          <h2>Peak Comments</h2>
+          <div class="comment-list" data-comments></div>
+        </article>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/analysis.js"></script>
+  </body>
+</html>
