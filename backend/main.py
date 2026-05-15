@@ -11,7 +11,7 @@ from backend.config import get_settings
 from backend.models.schemas import AnalyseRequest, AnalysisResponse, AnalyseMeta
 from backend.services import football_api
 from backend.services.football_api import FootballDataError
-from backend.services.reddit import RedditError, fetch_post_match_thread
+from backend.services.youtube import YouTubeError, fetch_match_comments
 from backend.services.sentiment import analyse_comments
 
 app = FastAPI(title="Atmos API", version="0.1.0")
@@ -61,13 +61,13 @@ async def get_search_matches(
 
 @app.post("/analyse", response_model=AnalysisResponse)
 async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
-    # Analyse Reddit sentiment for one Football-Data.org match.
+    # Analyse YouTube sentiment for one Football-Data.org match.
 
     try:
         raw_match = await football_api.get_match(payload.match_id)
         match = football_api.parse_match(raw_match)
         events = football_api.parse_events(raw_match)
-        thread = fetch_post_match_thread(match)
+        thread = fetch_match_comments(match)
         kickoff = datetime.fromisoformat(match.date.replace("Z", "+00:00")).astimezone(timezone.utc)
         buckets, half_split, top_comments, peak_minute, overall_vibe, crowd_energy = analyse_comments(
             thread.comments,
@@ -84,10 +84,10 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
                 peak_minute=peak_minute,
                 overall_vibe=overall_vibe,
                 crowd_energy=crowd_energy,
-                reddit_thread_url=thread.url,
+                youtube_thread_url=thread.url,
             ),
         )
     except FootballDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except RedditError as exc:
+    except YouTubeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

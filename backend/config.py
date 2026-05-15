@@ -16,9 +16,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     football_data_api_key: str = Field(default="", alias="FOOTBALL_DATA_API_KEY")
-    reddit_client_id: str = Field(default="", alias="REDDIT_CLIENT_ID")
-    reddit_client_secret: str = Field(default="", alias="REDDIT_CLIENT_SECRET")
-    reddit_user_agent: str = Field(default="atmosfc:v1 (by /u/atmosfc)", alias="REDDIT_USER_AGENT")
+    youtube_api_key: str = Field(default="", alias="YOUTUBE_API_KEY")
     cors_origins: str = Field(default="http://localhost:8000,http://127.0.0.1:8000", alias="CORS_ORIGINS")
 
     @property

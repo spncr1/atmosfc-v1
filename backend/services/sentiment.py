@@ -10,21 +10,21 @@ from typing import Dict, List, Tuple
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from backend.models.schemas import SentimentBucket, TopComment
-from backend.services.reddit import RedditComment
+from backend.services.youtube import YouTubeComment
 
 BUCKET_SIZE = 5
 MATCH_MINUTES = 90
 
 
 def analyse_comments(
-    comments: List[RedditComment],
+    comments: List[YouTubeComment],
     kickoff_utc: datetime,
 ) -> Tuple[List[SentimentBucket], Dict[str, Dict[str, int]], List[TopComment], int, str, str]:
-    # Score Reddit comments and return buckets, half split, top comments, and summary labels.
+    # Score YouTube comments and return buckets, half split, top comments, and summary labels.
 
     analyzer = SentimentIntensityAnalyzer()
     bucket_scores: Dict[int, List[float]] = defaultdict(list)
-    scored_comments: List[Tuple[RedditComment, int, float]] = []
+    scored_comments: List[Tuple[YouTubeComment, int, float]] = []
     half_split = {
         "first": {"pos": 0, "neg": 0, "neu": 0},
         "second": {"pos": 0, "neg": 0, "neu": 0},
@@ -78,7 +78,7 @@ def peak_bucket_minute(buckets: List[SentimentBucket]) -> int:
     return max(buckets, key=lambda bucket: (abs(bucket.score), bucket.comment_count)).minute
 
 
-def top_peak_comments(scored_comments: List[Tuple[RedditComment, int, float]], peak_minute: int) -> List[TopComment]:
+def top_peak_comments(scored_comments: List[Tuple[YouTubeComment, int, float]], peak_minute: int) -> List[TopComment]:
     # Return the top three comments by upvotes around the peak bucket.
 
     lower = max(0, peak_minute - BUCKET_SIZE)

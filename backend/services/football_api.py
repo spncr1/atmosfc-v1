@@ -118,7 +118,9 @@ async def recent_matches(limit: int = 18) -> List[MatchSummary]:
     errors: List[str] = []
     for code in SUPPORTED_COMPETITIONS:
         params = {
-            "dateFrom": (today - timedelta(days=14)).isoformat(),
+            "dateFrom": (today - timedelta(days=9)).isoformat(), 
+            # ^ ideally a 14-day window would be great here, but FootballData.org's free tier only allows max. 10 days, 
+            # so therefore the results will only show the most recent matches up to the last 10 days
             "dateTo": today.isoformat(),
             "competitions": code,
             "status": "FINISHED",
