@@ -1,4 +1,4 @@
-/* COLOUR PALETTE */
+/* MAIN COLOUR PALETTE */
 :root {
   --ink: #ffffff;
   --muted: #a0a0aa;
@@ -6,7 +6,8 @@
   --panel: #242428;
   --wash: #141414;
   --accent: #c8ff47;
-  --accent-dark: #a8d93a;
+  --accent-dark: #a9d93aa6;
+  --accent-darkest: #3d530aa6;
   --negative-muted: #6a6a74;
 }
 
@@ -70,12 +71,18 @@ header {
 .navbar a:hover,
 .brand:hover {
   color: var(--accent);
+  transition: transform 0.3s ease, filter 0.3s ease;
+  transform: scale(1.05);
+}
+
+.results-page header {
+  border-bottom: 0;
 }
 
 
 /* HERO LAYOUT */
 .hero {
-  padding: 54px 0 70px;
+  padding: 38px 0 22px;
 }
 
 .hero-top {
@@ -90,8 +97,7 @@ header {
   width: 430px;
 }
 
-.hero h1,
-.page-title h1 {
+.hero h1 {
   margin: 0;
   max-width: 760px;
   color: var(--ink);
@@ -110,8 +116,7 @@ header {
   line-height: 1.24;
 }
 
-.hero p,
-.page-title p {
+.hero p {
   margin: 18px 0 0;
   max-width: 430px;
   color: var(--muted);
@@ -135,6 +140,7 @@ header {
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  margin-top: -14px;
 }
 
 .section-head {
@@ -145,12 +151,14 @@ header {
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  margin-bottom: 8px;
 }
 
 /* SEARCH INPUT + CTA */
 .match-search-layout {
   width: min(960px, 100%);
   margin: 24px auto 0;
+  margin-top: 12px;
   padding: 8px 18px;
 }
 
@@ -160,7 +168,7 @@ header {
 }
 
 .recent-section {
-  margin-top: 0;
+  margin-top: -20px;
   padding: 0 18px 18px;
 }
 
@@ -216,6 +224,8 @@ header {
 
 .primary-button:hover {
   background: var(--accent-dark);
+  transition: transform 0.3s ease, filter 0.3s ease;
+  transform: scale(1.07);
 }
 
 /* FILTER LABELS */
@@ -231,7 +241,7 @@ header {
 
 /* FILTER PILLS */
 .filter-section {
-  margin: 24px 0 0;
+  margin: 20px 0 0;
   padding: 0;
   border: 0;
 }
@@ -279,18 +289,26 @@ header {
 .filter-option input:focus-visible + span,
 .filter-option span:hover {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(200, 255, 71, 0.1);
+  background-color: var(--accent-darkest);
+  box-shadow: 0 0 0 3px var(--accent);
+  transition: transform 0.3s ease, filter 0.3s ease;
+  transform: scale(1.05);
 }
 
 
 /* RESULTS PAGE FILTER FORM */
 .filter-panel {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 180px 150px auto;
-  gap: 14px;
-  margin: 24px 0;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px) 150px;
+  gap: 18px;
+  width: min(960px, 100%);
+  margin: 48px auto 0;
   padding: 18px;
   border-radius: 18px;
+}
+
+.filter-panel label:first-child {
+  grid-column: 1 / -1;
 }
 
 .filter-panel label {
@@ -301,6 +319,12 @@ header {
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.filter-panel .primary-button {
+  align-self: end;
+  width: 100%;
+  min-height: 52px;
 }
 
 .filter-panel input,
@@ -367,20 +391,74 @@ header {
 
 
 /* RESULTS LIST */
-.match-row {
-  grid-template-columns: minmax(0, 1fr) 72px minmax(220px, 0.8fr);
-  align-items: center;
-  min-height: 86px;
-}
-
-.match-row span {
+.match-list {
   display: grid;
-  gap: 6px;
+  gap: 18px;
+  width: min(1180px, 100%);
+  margin: 42px auto 0;
 }
 
-.match-row b {
+.match-row {
+  align-items: stretch;
+  min-height: 152px;
+  padding: 22px;
+}
+
+.match-row__meta,
+.match-row__main,
+.match-row__footer {
+  display: grid;
+}
+
+.match-row__meta {
+  grid-template-columns: auto 1fr;
+  gap: 18px;
+  align-items: center;
+}
+
+.match-row__meta em {
+  width: fit-content;
+  padding: 6px 14px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  font-style: normal;
+}
+
+.match-row__main {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.match-row__main strong {
+  font-size: 1.22rem;
+  font-weight: 900;
+}
+
+.match-row__main b {
   text-align: center;
-  font-size: 1.25rem;
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+
+.match-row__footer {
+  grid-template-columns: repeat(2, auto) 1fr;
+  gap: 16px;
+  align-items: center;
+}
+
+.match-row__footer i {
+  justify-self: end;
+  padding: 10px 22px;
+  color: #141414;
+  background: var(--accent);
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 900;
+  font-style: normal;
 }
 
 

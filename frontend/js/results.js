@@ -54,12 +54,20 @@ function renderMatches(matches) {
 function matchCard(match) {
   return `
     <button class="match-row" data-match="${encodeURIComponent(JSON.stringify(match))}">
-      <span>
-        <strong>${match.home}</strong>
-        <em>${match.away}</em>
+      <span class="match-row__meta">
+        <em>${match.competition}</em>
+        <small>${formatDate(match.date)}${match.round ? ` - ${match.round}` : ""}</small>
       </span>
-      <b>${match.score}</b>
-      <small>${match.competition} - ${formatDate(match.date)} - ${match.round || match.season || ""}</small>
+      <span class="match-row__main">
+        <strong>${match.home}</strong>
+        <b>${match.score}</b>
+        <strong>${match.away}</strong>
+      </span>
+      <span class="match-row__footer">
+        <small>${match.season || "Selected season"}</small>
+        <small>Reddit comments</small>
+        <i>Analyse</i>
+      </span>
     </button>
   `;
 }

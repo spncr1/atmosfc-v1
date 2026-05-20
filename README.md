@@ -1,6 +1,6 @@
 # Atmos FC
 
-AtmosFC.io analyses fan sentiment and reactions from comments on YouTube match highlight videos and visualises how crowd mood shifts in the hours following a football match. The aim is to turn thousands of raw reactions into a summarised analytcs chart, minute by minute, comment by comment.
+Atmos FC analyses fan sentiment and reactions from comments on YouTube match highlight videos and visualises how crowd mood shifts in the hours following a football match. The aim is to turn thousands of raw reactions into a summarised analytcs chart, minute by minute, comment by comment.
 
 ## The problem
 

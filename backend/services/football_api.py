@@ -150,6 +150,7 @@ def parse_match(raw: Dict[str, Any]) -> MatchSummary:
     away_score = score.get("away")
     display_score = "TBD" if home_score is None or away_score is None else f"{home_score}-{away_score}"
     competition = raw.get("competition", {})
+    competition_code = competition.get("code", "")
     season = raw.get("season", {})
 
     return MatchSummary(
@@ -157,8 +158,8 @@ def parse_match(raw: Dict[str, Any]) -> MatchSummary:
         home=raw.get("homeTeam", {}).get("name", "Home"),
         away=raw.get("awayTeam", {}).get("name", "Away"),
         score=display_score,
-        competition=competition.get("name", "Competition"),
-        competition_code=competition.get("code", ""),
+        competition=SUPPORTED_COMPETITIONS.get(competition_code, competition.get("name", "Competition")),
+        competition_code=competition_code,
         date=raw.get("utcDate", ""),
         round=raw.get("matchday") and f"Matchday {raw.get('matchday')}",
         season=_format_season(season.get("startDate")),
