@@ -34,11 +34,14 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/matches/recent")
-async def get_recent_matches(limit: int = Query(default=18, ge=1, le=30)):
+async def get_recent_matches(
+    competition: str | None = None,
+    limit: int = Query(default=18, ge=1, le=30),
+):
     # Return recent finished matches for the landing page.
 
     try:
-        return {"matches": await football_api.recent_matches(limit=limit)}
+        return {"matches": await football_api.recent_matches(limit=limit, competition=competition)}
     except FootballDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 

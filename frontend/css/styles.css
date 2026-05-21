@@ -136,7 +136,7 @@ header {
   display: grid;
   gap: 8px;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -239,14 +239,14 @@ header {
   text-transform: none;
 }
 
-/* FILTER PILLS */
+/* FILTER TABS */
 .filter-section {
   margin: 20px 0 0;
   padding: 0;
   border: 0;
 }
 
-.filter-pills {
+.filter-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 14px 16px;
@@ -286,8 +286,22 @@ header {
   border-color: var(--accent);
 }
 
+.filter-option input:disabled + span {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.filter-option.is-unavailable span::after {
+  content: "Unavailable";
+  margin-left: 8px;
+  color: var(--negative-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .filter-option input:focus-visible + span,
-.filter-option span:hover {
+.filter-option:not(.is-unavailable) span:hover {
   border-color: var(--accent);
   background-color: var(--accent-darkest);
   box-shadow: 0 0 0 3px var(--accent);

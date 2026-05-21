@@ -65,14 +65,14 @@
           <div class="search-row">
             <label class="section-heading">
               Search by team or competition
-              <input name="q" type="search" placeholder="Arsenal, Barcelona, UCL">
+              <input name="q" type="search" placeholder="PSG, Barcelona, UCL">
             </label>
             <button class="primary-button" type="submit">Search ↗</button>
           </div>
 
           <fieldset class="filter-section">
             <span class="search-field">Competition:</span>
-            <div class="filter-pills">
+            <div class="filter-tabs">
               <label class="filter-option"><input type="radio" name="competition" value="" checked><span>All</span></label>
               <label class="filter-option"><input type="radio" name="competition" value="PL"><span>PL</span></label>
               <label class="filter-option"><input type="radio" name="competition" value="PD"><span>La Liga</span></label>
@@ -80,15 +80,16 @@
               <label class="filter-option"><input type="radio" name="competition" value="SA"><span>Serie A</span></label>
               <label class="filter-option"><input type="radio" name="competition" value="FL1"><span>Ligue 1</span></label>
               <label class="filter-option"><input type="radio" name="competition" value="CL"><span>UCL</span></label>
-              <label class="filter-option"><input type="radio" name="competition" value="EL"><span>UEL</span></label>
-              <label class="filter-option"><input type="radio" name="competition" value="EC"><span>UECL</span></label>
+              <label class="filter-option is-unavailable"><input type="radio" name="competition" value="EL" disabled><span>UEL</span></label>
+              <label class="filter-option is-unavailable"><input type="radio" name="competition" value="UECL" disabled><span>UECL</span></label>
             </div>
           </fieldset>
 
           <fieldset class="filter-section">
             <span class="search-field">Season:</span>
-            <div class="filter-pills">
-              <label class="filter-option"><input type="radio" name="season" value="2025" checked><span>25/26</span></label>
+            <div class="filter-tabs">
+              <label class="filter-option"><input type="radio" name="season" value="" checked><span>All</span></label>
+              <label class="filter-option"><input type="radio" name="season" value="2025"><span>25/26</span></label>
               <label class="filter-option"><input type="radio" name="season" value="2024"><span>24/25</span></label>
               <label class="filter-option"><input type="radio" name="season" value="2023"><span>23/24</span></label>
               <label class="filter-option"><input type="radio" name="season" value="2022"><span>22/23</span></label>
@@ -105,7 +106,7 @@
       </section>
 
       <section class="match-search-layout recent-section">
-        <div class="section-head">
+        <div class="section-head" data-recent-heading>
           Recent matches
         </div>
         <div class="match-grid" data-recent></div>

@@ -1,20 +1,43 @@
 const recentGrid = document.querySelector("[data-recent]");
+const recentHeading = document.querySelector("[data-recent-heading]");
 const searchForm = document.querySelector("[data-search-form]");
+const competitionInputs = searchForm.querySelectorAll('input[name="competition"]');
+
+const competitionLabels = {
+  PL: "Premier League",
+  PD: "La Liga",
+  BL1: "Bundesliga",
+  SA: "Serie A",
+  FL1: "Ligue 1",
+  CL: "UCL",
+  EL: "UEL",
+  UECL: "UECL",
+};
+
+const unavailableCompetitions = new Set(["EL", "UECL"]);
 
 init();
 
 async function init() {
   searchForm.addEventListener("submit", handleSearch);
+  competitionInputs.forEach((input) => {
+    input.addEventListener("change", () => loadRecentMatches(input.value));
+  });
   await loadRecentMatches();
 }
 
-async function loadRecentMatches() {
-  setStatus(recentGrid, "Loading recent matches...");
+async function loadRecentMatches(competition = selectedCompetition()) {
+  updateRecentHeading(competition);
+  if (unavailableCompetitions.has(competition)) {
+    setStatus(recentGrid, `${competitionLabels[competition]} is currently unavailable.`);
+    return;
+  }
+  setStatus(recentGrid, loadingRecentMessage(competition));
   try {
-    const { matches } = await apiGet("/matches/recent", { limit: 12 });
+    const { matches } = await apiGet("/matches/recent", { limit: 12, competition });
     renderMatches(recentGrid, matches);
   } catch (error) {
-    setStatus(recentGrid, error.message);
+    setStatus(recentGrid, error.message || "Could not load recent matches.");
   }
 }
 
@@ -48,4 +71,18 @@ function matchCard(match) {
 
 function setStatus(target, message) {
   target.innerHTML = `<p class="status">${message}</p>`;
+}
+
+function selectedCompetition() {
+  return searchForm.elements.competition.value;
+}
+
+function updateRecentHeading(competition) {
+  const label = competitionLabels[competition];
+  recentHeading.textContent = label ? `Recent ${label} matches` : "Recent matches";
+}
+
+function loadingRecentMessage(competition) {
+  const label = competitionLabels[competition];
+  return label ? `Loading recent ${label} matches...` : "Loading recent matches...";
 }
