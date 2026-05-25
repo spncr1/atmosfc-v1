@@ -215,11 +215,15 @@ def parse_match(raw: Dict[str, Any]) -> MatchSummary:
     competition = raw.get("competition", {})
     competition_code = competition.get("code", "")
     season = raw.get("season", {})
+    home_team = raw.get("homeTeam", {})
+    away_team = raw.get("awayTeam", {})
 
     return MatchSummary(
         id=str(raw.get("id", "")),
-        home=raw.get("homeTeam", {}).get("name", "Home"),
-        away=raw.get("awayTeam", {}).get("name", "Away"),
+        home=home_team.get("name", "Home"),
+        away=away_team.get("name", "Away"),
+        home_crest=home_team.get("crest"),
+        away_crest=away_team.get("crest"),
         score=display_score,
         competition=SUPPORTED_COMPETITIONS.get(competition_code, competition.get("name", "Competition")),
         competition_code=competition_code,

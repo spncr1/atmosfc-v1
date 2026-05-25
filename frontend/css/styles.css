@@ -342,6 +342,7 @@ header {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   min-width: 50px;
   min-height: 40px;
   padding: 0 24px;
@@ -350,6 +351,13 @@ header {
   border: 1px solid var(--line);
   border-radius: 999px;
   cursor: pointer;
+}
+
+.filter-emblem {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex: 0 0 auto;
 }
 
 .filter-option input:checked + span {
@@ -458,7 +466,7 @@ header {
 /* RECENT MATCHES */
 .match-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(280px, 1fr));
   gap: 18px;
   padding-bottom: 64px;
 }
@@ -493,9 +501,19 @@ header {
 }
 
 .match-card__teams {
-  font-size: 1.05rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.98rem;
   font-weight: 800;
   line-height: 1.35;
+}
+
+.match-card__team {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 
@@ -563,7 +581,7 @@ header {
 
 .match-row-main strong {
   min-width: 0;
-  font-size: 1.22rem;
+  font-size: 1.3rem;
   font-weight: 900;
   line-height: 1.25;
 }
@@ -576,9 +594,30 @@ header {
   text-align: left;
 }
 
+.match-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.match-team-home {
+  justify-content: flex-end;
+}
+
+.match-team-away {
+  justify-content: flex-start;
+}
+
+.team-crest {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
 .match-row-main b {
   text-align: center;
-  font-size: 1.5rem;
+  font-size: 1.65rem;
   font-weight: 900;
 }
 

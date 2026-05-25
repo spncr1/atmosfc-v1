@@ -107,9 +107,9 @@ function matchCard(match) {
         <small>${formatDate(match.date)}${match.round ? ` • ${match.round}` : ""}</small>
       </span>
       <span class="match-row-main">
-        <strong>${match.home}</strong>
+        <strong class="match-team match-team-home">${teamCrest(match.home_crest, match.home)}<span>${match.home}</span></strong>
         <b>${match.score}</b>
-        <strong>${match.away}</strong>
+        <strong class="match-team match-team-away"><span>${match.away}</span>${teamCrest(match.away_crest, match.away)}</strong>
       </span>
       <span class="match-row-footer">
         <small>${match.season || "Selected season"}</small>
@@ -118,6 +118,11 @@ function matchCard(match) {
       </span>
     </button>
   `;
+}
+
+function teamCrest(src, team) {
+  if (!src) return "";
+  return `<img class="team-crest" src="${src}" alt="" loading="lazy" onerror="this.remove()">`;
 }
 
 function setStatus(target, message) {

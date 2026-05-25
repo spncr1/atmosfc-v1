@@ -11,6 +11,8 @@ class MatchSummary(BaseModel):
     id: str
     home: str
     away: str
+    home_crest: Optional[str] = None
+    away_crest: Optional[str] = None
     score: str
     competition: str
     competition_code: str

@@ -63,10 +63,19 @@ function matchCard(match) {
   return `
     <button class="match-card" data-match="${encodeURIComponent(JSON.stringify(match))}">
       <span class="match-card__meta">${match.competition} - ${formatDate(match.date)}</span>
-      <span class="match-card__teams">${match.home} <strong>${match.score}</strong> ${match.away}</span>
+      <span class="match-card__teams">
+        <span class="match-card__team">${teamCrest(match.home_crest, match.home)}${match.home}</span>
+        <strong>${match.score}</strong>
+        <span class="match-card__team">${match.away}${teamCrest(match.away_crest, match.away)}</span>
+      </span>
       <span class="match-card__round">${match.round || match.season || ""}</span>
     </button>
   `;
+}
+
+function teamCrest(src, team) {
+  if (!src) return "";
+  return `<img class="team-crest" src="${src}" alt="" loading="lazy" onerror="this.remove()">`;
 }
 
 function setStatus(target, message) {
