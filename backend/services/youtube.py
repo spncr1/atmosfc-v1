@@ -33,7 +33,7 @@ class YouTubeComment:
 
 
 @dataclass
-class YouTubeThread:
+class YouTubeCommentBatch:
     # Aggregated comments pulled from multiple YouTube videos for one match.
 
     title: str          # title of the best matching video
@@ -42,7 +42,7 @@ class YouTubeThread:
     comments: List[YouTubeComment]
 
 
-def fetch_match_comments(match: MatchSummary) -> YouTubeThread:
+def fetch_match_comments(match: MatchSummary) -> YouTubeCommentBatch:
     # Search YouTube for match highlight videos and return aggregated comments.
 
     settings = get_settings()
@@ -67,7 +67,7 @@ def fetch_match_comments(match: MatchSummary) -> YouTubeThread:
     if not all_comments:
         raise YouTubeError("No comments available for this match across all found videos.")
 
-    return YouTubeThread(
+    return YouTubeCommentBatch(
         title=best_video["title"],
         url=f"https://youtube.com/watch?v={best_video['id']}",
         created_utc=best_video["published_utc"],

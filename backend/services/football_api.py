@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 import re
+import time
 import unicodedata
 
 import httpx
@@ -26,6 +27,8 @@ SUPPORTED_COMPETITIONS: Dict[str, str] = {
 }
 
 SEARCHABLE_COMPETITIONS = ["PL", "PD", "BL1", "SA", "FL1", "CL"]
+CACHE_TTL_SECONDS = 600
+_SEARCH_CACHE: Dict[str, tuple[float, List[MatchSummary]]] = {}
 
 COMPETITION_ALIASES: Dict[str, str] = {
     "premier league": "PL",
@@ -95,7 +98,6 @@ async def search_matches(
     query: str = "",
     competition: Optional[str] = None,
     season: Optional[int] = None,
-    limit: int = 24,
 ) -> List[MatchSummary]:
     # Search supported competitions for matches by team name, competition, and season.
 
@@ -105,6 +107,11 @@ async def search_matches(
     requested_code = normalize_competition(competition)
     if competition and requested_code is None:
         raise FootballDataError("Unsupported competition.")
+    cache_key = _search_cache_key(query, requested_code, season)
+    cached = _get_cached_search(cache_key)
+    if cached is not None:
+        return cached
+
     codes = [requested_code] if requested_code else SEARCHABLE_COMPETITIONS
     seasons = [season] if season else list(reversed(allowed_seasons()))
     search_terms = _search_terms(query)
@@ -115,22 +122,24 @@ async def search_matches(
         season_matches: List[MatchSummary] = []
         for code in codes:
             try:
-                data = await _request_json(f"/competitions/{code}/matches", {"season": season_year})
+                data = await _request_json(f"/competitions/{code}/matches", {"season": season_year, "status": "FINISHED"})
             except FootballDataError as exc:
                 errors.append(str(exc))
                 continue
             for raw in data.get("matches", []):
                 summary = parse_match(raw)
+                if summary.status != "FINISHED":
+                    continue
                 if search_terms and not _matches_search(summary, search_terms):
                     continue
                 season_matches.append(summary)
         matches.extend(sorted(season_matches, key=lambda match: match.date, reverse=True))
-        if len(matches) >= limit:
-            return matches[:limit]
 
     if not matches and errors:
         raise FootballDataError(errors[0])
-    return sorted(matches, key=lambda match: match.date, reverse=True)[:limit]
+    sorted_matches = sorted(matches, key=lambda match: match.date, reverse=True)
+    _set_cached_search(cache_key, sorted_matches)
+    return sorted_matches
 
 
 async def recent_matches(limit: int = 18, competition: Optional[str] = None) -> List[MatchSummary]:
@@ -244,6 +253,25 @@ def _search_terms(query: str) -> List[str]:
 def _matches_search(match: MatchSummary, terms: List[str]) -> bool:
     haystack = _normalize_text(f"{match.home} {match.away} {match.competition}")
     return any(term in haystack for term in terms)
+
+
+def _search_cache_key(query: str, competition: Optional[str], season: Optional[int]) -> str:
+    return f"{_normalize_text(query)}:{competition or 'all'}:{season or 'all'}"
+
+
+def _get_cached_search(key: str) -> Optional[List[MatchSummary]]:
+    cached = _SEARCH_CACHE.get(key)
+    if not cached:
+        return None
+    expires_at, matches = cached
+    if expires_at <= time.monotonic():
+        _SEARCH_CACHE.pop(key, None)
+        return None
+    return matches
+
+
+def _set_cached_search(key: str, matches: List[MatchSummary]) -> None:
+    _SEARCH_CACHE[key] = (time.monotonic() + CACHE_TTL_SECONDS, matches)
 
 
 def _normalize_text(value: str) -> str:

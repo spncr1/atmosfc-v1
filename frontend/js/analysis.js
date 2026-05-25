@@ -20,7 +20,7 @@ async function init() {
   }
 
   try {
-    statusEl.textContent = "Analysing Reddit match thread...";
+    statusEl.textContent = "Analysing YouTube match comments...";
     const analysis = await apiPost("/analyse", { match_id: matchId });
     statusEl.textContent = "";
     renderAnalysis(analysis);
@@ -35,7 +35,7 @@ function renderAnalysis(data) {
   renderChart(data.sentiment_buckets);
   renderEvents(data.events);
   renderHalves(data.half_split);
-  renderComments(data.top_comments, data.meta.reddit_thread_url);
+  renderComments(data.top_comments, data.meta.youtube_video_url);
 }
 
 function renderMatchHeader(match) {
@@ -112,16 +112,16 @@ function renderHalves(split) {
     .join("");
 }
 
-function renderComments(items, threadUrl) {
+function renderComments(items, videoUrl) {
   comments.innerHTML = items.length
     ? items.map((item) => `
         <article class="comment-card">
           <p>${item.text}</p>
-          <span>${item.minute}' - ${item.score} upvotes - ${item.sentiment}</span>
+          <span>${item.minute}' - ${item.score} likes - ${item.sentiment}</span>
         </article>
       `).join("")
     : `<p class="status">No peak comments found.</p>`;
-  if (threadUrl) {
-    comments.insertAdjacentHTML("beforeend", `<a class="thread-link" href="${threadUrl}" target="_blank" rel="noreferrer">Open Reddit thread</a>`);
+  if (videoUrl) {
+    comments.insertAdjacentHTML("beforeend", `<a class="video-link" href="${videoUrl}" target="_blank" rel="noreferrer">Open YouTube video</a>`);
   }
 }

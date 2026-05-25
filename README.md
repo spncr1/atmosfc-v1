@@ -12,7 +12,7 @@ Atmos FC analyses fan sentiment and reactions from comments on YouTube match hig
 
 ## Tech Stack
 
-- Backend: Python, FastAPI, Football-Data.org, PRAW, VADER
+- Backend: Python, FastAPI, Football-Data.org, YouTube Data API, VADER
 - Frontend: vanilla HTML, CSS, JavaScript, Chart.js
 - Backend deployment: Railway
 - Frontend deployment: Vercel

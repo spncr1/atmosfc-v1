@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from math import ceil
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import get_settings
-from backend.models.schemas import AnalyseRequest, AnalysisResponse, AnalyseMeta
+from backend.models.schemas import AnalyseRequest, AnalysisResponse, AnalyseMeta, MatchSearchResponse
 from backend.services import football_api
 from backend.services.football_api import FootballDataError
 from backend.services.youtube import YouTubeError, fetch_match_comments
@@ -46,18 +47,37 @@ async def get_recent_matches(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.get("/matches/search")
+@app.get("/matches/search", response_model=MatchSearchResponse)
 async def get_search_matches(
     q: str = "",
     competition: str | None = None,
-    season: int | None = Query(default=None, ge=2015, le=2025),
-    limit: int = Query(default=24, ge=1, le=50),
+    season: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=15, ge=1, le=30),
 ):
     # Search matches by team, competition, and season.
 
     try:
-        matches = await football_api.search_matches(query=q, competition=competition, season=season, limit=limit)
-        return {"matches": matches}
+        season_year = int(season) if season else None
+        matches = await football_api.search_matches(query=q, competition=competition, season=season_year)
+        total = len(matches)
+        total_pages = ceil(total / page_size) if total else 0
+        current_page = min(page, total_pages) if total_pages else 1
+        start = (current_page - 1) * page_size
+        end = start + page_size
+        return {
+            "matches": matches[start:end],
+            "pagination": {
+                "page": current_page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": total_pages,
+                "has_previous": current_page > 1,
+                "has_next": total_pages > 0 and current_page < total_pages,
+            },
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Season must be a year such as 2025.") from exc
     except FootballDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -69,11 +89,13 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
     try:
         raw_match = await football_api.get_match(payload.match_id)
         match = football_api.parse_match(raw_match)
+        if match.status != "FINISHED":
+            raise HTTPException(status_code=400, detail="Only finished matches can be analysed.")
         events = football_api.parse_events(raw_match)
-        thread = fetch_match_comments(match)
+        video_comments = fetch_match_comments(match)
         kickoff = datetime.fromisoformat(match.date.replace("Z", "+00:00")).astimezone(timezone.utc)
         buckets, half_split, top_comments, peak_minute, overall_vibe, crowd_energy = analyse_comments(
-            thread.comments,
+            video_comments.comments,
             kickoff,
         )
         return AnalysisResponse(
@@ -83,11 +105,11 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
             top_comments=top_comments,
             half_split=half_split,
             meta=AnalyseMeta(
-                total_comments=len(thread.comments),
+                total_comments=len(video_comments.comments),
                 peak_minute=peak_minute,
                 overall_vibe=overall_vibe,
                 crowd_energy=crowd_energy,
-                youtube_thread_url=thread.url,
+                youtube_video_url=video_comments.url,
             ),
         )
     except FootballDataError as exc:

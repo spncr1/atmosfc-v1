@@ -20,6 +20,24 @@ class MatchSummary(BaseModel):
     status: Optional[str] = None
 
 
+class SearchPagination(BaseModel):
+    # Pagination metadata for match search results.
+
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+    has_previous: bool
+    has_next: bool
+
+
+class MatchSearchResponse(BaseModel):
+    # Paginated match search response consumed by results.html.
+
+    matches: List[MatchSummary]
+    pagination: SearchPagination
+
+
 class MatchEvent(BaseModel):
     # A timeline event displayed beside sentiment.
 
@@ -37,7 +55,7 @@ class SentimentBucket(BaseModel):
 
 
 class TopComment(BaseModel):
-    # A high-signal Reddit comment near a peak sentiment moment.
+    # A high-signal YouTube comment near a peak sentiment moment.
 
     text: str
     score: int
@@ -58,7 +76,7 @@ class AnalyseMeta(BaseModel):
     peak_minute: int
     overall_vibe: str
     crowd_energy: str
-    reddit_thread_url: Optional[str] = None
+    youtube_video_url: Optional[str] = None
 
 
 class AnalysisResponse(BaseModel):

@@ -1,7 +1,9 @@
 const resultsGrid = document.querySelector("[data-results]");
-const resultsTitle = document.querySelector("[data-results-title]");
+const resultsSummary = document.querySelector("[data-results-summary]") || createResultsSummary();
+const paginationEl = document.querySelector("[data-pagination]");
 const filterForm = document.querySelector("[data-filter-form]");
 const params = new URLSearchParams(window.location.search);
+const PAGE_SIZE = 15;
 const unavailableCompetitions = new Set(["EL", "UECL"]);
 const competitionLabels = {
   PL: "Premier League",
@@ -31,6 +33,7 @@ const seasonLabels = {
 init();
 
 async function init() {
+  if (!resultsGrid || !filterForm) return;
   hydrateForm();
   filterForm.addEventListener("submit", handleFilter);
   await loadResults();
@@ -47,57 +50,70 @@ async function loadResults() {
   const q = params.get("q") || "";
   const competition = params.get("competition");
   const season = params.get("season");
-  resultsTitle.textContent = q ? `Matches for ${q}` : "Match Results";
+  const page = currentPage();
   if (unavailableCompetitions.has(competition)) {
-    setStatus(resultsGrid, `${competitionLabels[competition]} is currently unavailable.`);
+    resultsGrid.innerHTML = "";
+    clearPagination();
+    setStatus(resultsSummary, `${competitionLabels[competition]} is currently unavailable.`);
     return;
   }
-  setStatus(resultsGrid, `Searching ${searchContext(q, competition, season)}...`);
+  resultsGrid.innerHTML = "";
+  clearPagination();
+  setStatus(resultsSummary, `Searching ${searchContext(q, competition, season)}...`);
   try {
-    const { matches } = await apiGet("/matches/search", {
+    const { matches, pagination } = await apiGet("/matches/search", {
       q,
       competition,
       season,
-      limit: 50,
+      page,
+      page_size: PAGE_SIZE,
     });
-    renderMatches(matches, q, competition, season);
+    renderMatches(matches, pagination, q, competition, season);
   } catch (error) {
-    setStatus(resultsGrid, error.message);
+    resultsGrid.innerHTML = "";
+    clearPagination();
+    setStatus(resultsSummary, error.message);
   }
 }
 
 function handleFilter(event) {
   event.preventDefault();
-  window.location.href = `results.html?${new URLSearchParams(new FormData(filterForm)).toString()}`;
+  const nextParams = new URLSearchParams(new FormData(filterForm));
+  nextParams.set("page", "1");
+  window.location.href = `results.html?${nextParams.toString()}`;
 }
 
-function renderMatches(matches, q, competition, season) {
+function renderMatches(matches, pagination, q, competition, season) {
   if (!matches.length) {
-    setStatus(resultsGrid, `No matches found ${searchContext(q, competition, season)}.`);
+    resultsGrid.innerHTML = "";
+    clearPagination();
+    setStatus(resultsSummary, `No matches found ${searchContext(q, competition, season)}.`);
     return;
   }
-  resultsTitle.textContent = `${matches.length} ${matches.length === 1 ? "result" : "results"} ${searchContext(q, competition, season)}`;
+  setSummary(`${pagination.total} ${pagination.total === 1 ? "result" : "results"} ${searchContext(q, competition, season)}`);
   resultsGrid.innerHTML = matches.map(matchCard).join("");
+  resultsSummary.removeAttribute("aria-busy");
   resultsGrid.querySelectorAll("[data-match]").forEach((button) => {
     button.addEventListener("click", () => storeMatch(JSON.parse(decodeURIComponent(button.dataset.match))));
   });
+  renderPagination(pagination);
 }
 
 function matchCard(match) {
   return `
     <button class="match-row" data-match="${encodeURIComponent(JSON.stringify(match))}">
-      <span class="match-row__meta">
+      <span class="match-row-meta">
         <em>${match.competition}</em>
-        <small>${formatDate(match.date)}${match.round ? ` - ${match.round}` : ""}</small>
+        <small>${formatDate(match.date)}${match.round ? ` • ${match.round}` : ""}</small>
       </span>
-      <span class="match-row__main">
+      <span class="match-row-main">
         <strong>${match.home}</strong>
         <b>${match.score}</b>
         <strong>${match.away}</strong>
       </span>
-      <span class="match-row__footer">
+      <span class="match-row-footer">
         <small>${match.season || "Selected season"}</small>
-        <small>Reddit comments</small>
+        <small>YouTube comments</small>
         <i>Analyse</i>
       </span>
     </button>
@@ -105,7 +121,68 @@ function matchCard(match) {
 }
 
 function setStatus(target, message) {
+  target.setAttribute("aria-busy", "true");
   target.innerHTML = `<p class="status">${message}</p>`;
+}
+
+function setSummary(message) {
+  resultsSummary.innerHTML = `<p class="results-summary__text">${message}</p>`;
+}
+
+function renderPagination(pagination) {
+  if (!paginationEl || pagination.total_pages <= 1) {
+    clearPagination();
+    return;
+  }
+
+  const pages = visiblePages(pagination.page, pagination.total_pages);
+  paginationEl.innerHTML = `
+    <button class="pagination__step" type="button" data-page="${pagination.page - 1}" ${pagination.has_previous ? "" : "disabled"}>Prev</button>
+    ${pages.map((page) => `
+      <button class="pagination__page" type="button" data-page="${page}" ${page === pagination.page ? 'aria-current="page"' : ""}>${page}</button>
+    `).join("")}
+    <button class="pagination__step" type="button" data-page="${pagination.page + 1}" ${pagination.has_next ? "" : "disabled"}>Next</button>
+  `;
+
+  paginationEl.querySelectorAll("[data-page]:not([disabled])").forEach((button) => {
+    button.addEventListener("click", () => navigateToPage(button.dataset.page));
+  });
+}
+
+function visiblePages(page, totalPages) {
+  if (totalPages <= 3) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+  const start = Math.max(1, Math.min(page - 1, totalPages - 2));
+  return [start, start + 1, start + 2];
+}
+
+function navigateToPage(page) {
+  const nextParams = new URLSearchParams(window.location.search);
+  nextParams.set("page", page);
+  window.location.href = `results.html?${nextParams.toString()}`;
+}
+
+function clearPagination() {
+  if (paginationEl) {
+    paginationEl.innerHTML = "";
+  }
+}
+
+function currentPage() {
+  const page = Number.parseInt(params.get("page") || "1", 10);
+  return Number.isNaN(page) || page < 1 ? 1 : page;
+}
+
+function createResultsSummary() {
+  const summary = document.createElement("section");
+  summary.className = "results-summary";
+  summary.dataset.resultsSummary = "";
+  const grid = document.querySelector("[data-results]");
+  if (grid) {
+    grid.before(summary);
+  }
+  return summary;
 }
 
 function searchContext(q, competition, season) {
