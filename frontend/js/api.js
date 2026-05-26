@@ -39,5 +39,6 @@ function formatDate(value) {
 
 function storeMatch(match) {
   sessionStorage.setItem("selectedMatch", JSON.stringify(match));
+  sessionStorage.setItem("resultsReturnUrl", window.location.href);
   window.location.href = `analysis.html?match_id=${encodeURIComponent(match.id)}`;
 }

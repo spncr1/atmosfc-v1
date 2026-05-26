@@ -94,19 +94,25 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
         events = football_api.parse_events(raw_match)
         video_comments = fetch_match_comments(match)
         kickoff = datetime.fromisoformat(match.date.replace("Z", "+00:00")).astimezone(timezone.utc)
-        buckets, half_split, top_comments, peak_minute, overall_vibe, crowd_energy = analyse_comments(
+        score_margin = _score_margin(raw_match)
+        source_video_count = len({comment.permalink for comment in video_comments.comments}) or 1
+        buckets, reaction_intensity, half_split, top_comments, peak_minute, peak_window, overall_vibe, crowd_energy = analyse_comments(
             video_comments.comments,
             kickoff,
+            score_margin,
         )
         return AnalysisResponse(
             match=match,
             events=events,
             sentiment_buckets=buckets,
+            reaction_intensity=reaction_intensity,
             top_comments=top_comments,
             half_split=half_split,
             meta=AnalyseMeta(
-                total_comments=len(video_comments.comments),
+                total_comments=sum(bucket.comment_count for bucket in reaction_intensity),
                 peak_minute=peak_minute,
+                peak_window=peak_window,
+                source_video_count=source_video_count,
                 overall_vibe=overall_vibe,
                 crowd_energy=crowd_energy,
                 youtube_video_url=video_comments.url,
@@ -116,3 +122,12 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except YouTubeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _score_margin(raw_match: dict) -> int:
+    score = raw_match.get("score", {}).get("fullTime", {})
+    home_score = score.get("home")
+    away_score = score.get("away")
+    if home_score is None or away_score is None:
+        return 0
+    return abs(int(home_score) - int(away_score))

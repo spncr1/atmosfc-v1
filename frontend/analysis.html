@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Atmos FC - Match Analysis</title>
-    
+
     <!-- CSS stylesheet -->
     <link rel="stylesheet" href="css/styles.css">
 
@@ -13,52 +13,68 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="assets/atmosfc-logo.svg">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   </head>
-  <body>
-    <header>
-      <a class="brand" href="index.html">Atmos</a>
-      <nav class="navbar">
-        <a href="results.html">Search</a>
-      </nav>
+  <body class="analysis-page">
+    <header class="analysis-nav">
+      <a class="brand" href="results.html" data-back-link><- Back</a>
+      <img class="analysis-nav-logo" src="assets/atmosfc-logo-v2.svg" alt="Atmos FC">
+      <span aria-hidden="true"></span>
     </header>
 
-    <main class="content">
-      <section class="analysis-head">
-        <div>
-          <h1 data-match-title>Match analysis</h1>
-          <p data-match-meta></p>
-          <p class="status" data-status></p>
+    <main class="content analysis-content">
+      <p class="status analysis-status" data-status></p>
+
+      <section class="analysis-match-card">
+        <div class="analysis-match-meta">
+          <div class="analysis-match-badges" data-match-badges></div>
+          <span data-match-detail></span>
         </div>
-        <div class="summary-grid" data-summary></div>
+
+        <div class="analysis-scoreboard">
+          <img class="analysis-crest" data-home-crest alt="">
+          <div class="analysis-team analysis-team-home">
+            <strong data-home-short>Home</strong>
+            <span data-home-full></span>
+          </div>
+          <div class="analysis-score">
+            <strong data-match-score>0–0</strong>
+            <span data-half-time>HT unavailable</span>
+          </div>
+          <div class="analysis-team analysis-team-away">
+            <strong data-away-short>Away</strong>
+            <span data-away-full></span>
+          </div>
+          <img class="analysis-crest" data-away-crest alt="">
+        </div>
       </section>
 
-      <section class="analysis-grid">
-        <article class="panel">
-          <h2>Sentiment Pulse</h2>
-          <div class="chart-wrap">
-            <canvas id="pulseChart"></canvas>
-          </div>
+      <section class="analysis-metrics" data-summary></section>
+
+      <section class="analysis-card analysis-chart-card">
+        <p class="analysis-card-label">Reaction intensity — 24hrs after full time</p>
+        <div class="analysis-chart-wrap">
+          <canvas id="pulseChart" role="img" aria-label="Line chart showing reaction intensity over the 24 hours after full time">
+            Reaction intensity chart over the 24 hours after full time.
+          </canvas>
+        </div>
+        <div class="analysis-chart-legend" data-chart-legend></div>
+      </section>
+
+      <section class="analysis-two-column">
+        <article class="analysis-card">
+          <p class="analysis-card-label">Key events</p>
+          <ul class="analysis-event-list" data-events></ul>
         </article>
 
-        <aside class="panel">
-          <h2>Match Events</h2>
-          <ul class="timeline" data-events></ul>
-        </aside>
-
-        <article class="panel">
-          <h2>Half Split</h2>
-          <div class="half-grid" data-halves></div>
-        </article>
-
-        <article class="panel">
-          <h2>Peak Comments</h2>
-          <div class="comment-list" data-comments></div>
+        <article class="analysis-card">
+          <p class="analysis-card-label">Top comments</p>
+          <div class="analysis-comment-list" data-comments></div>
         </article>
       </section>
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <script src="js/api.js"></script>
     <script src="js/analysis.js"></script>
   </body>
