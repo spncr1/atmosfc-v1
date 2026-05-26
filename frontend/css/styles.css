@@ -716,10 +716,17 @@ header {
 
 .analysis-nav {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-height: 92px;
   border-bottom: 0;
+}
+
+.analysis-nav-logo {
+  grid-column: 3;
+  justify-self: end;
+  width: 132px;
+  height: auto;
 }
 
 .analysis-back {
@@ -731,11 +738,6 @@ header {
 
 .analysis-back:hover {
   color: var(--accent);
-}
-
-.analysis-nav-logo {
-  width: 132px;
-  height: auto;
 }
 
 .analysis-content {
@@ -857,7 +859,7 @@ header {
 .analysis-metric {
   display: grid;
   align-content: start;
-  min-height: 112px;
+  min-height: 25px;
   padding: 16px;
   border-radius: 10px;
 }
@@ -962,7 +964,7 @@ header {
 .analysis-event-list {
   display: grid;
   padding: 0;
-  margin: 20px 0 0;
+  margin: 2px 0 0;
   list-style: none;
 }
 
@@ -1015,7 +1017,7 @@ header {
 
 .analysis-comment-list {
   display: grid;
-  margin-top: 20px;
+  margin-top: 3px;
 }
 
 .analysis-comment {
@@ -1039,6 +1041,12 @@ header {
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.5;
+}
+
+.analysis-comment small {
+  color: var(--negative-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
 }
 
 .analysis-comment a {

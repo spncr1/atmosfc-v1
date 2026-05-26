@@ -53,7 +53,7 @@ function renderMatchHeader(match) {
     <span class="analysis-pill">${escapeHtml(match.competition || "Competition")}</span>
     <span class="analysis-pill analysis-pill-muted">${escapeHtml(match.round || match.season || "Stage unavailable")}</span>
   `;
-  matchDetailEl.textContent = [formatDate(match.date), match.venue].filter(Boolean).join(" · ");
+  matchDetailEl.textContent = [formatDate(match.date), match.venue || "Venue unavailable"].filter(Boolean).join(" · ");
   setCrest(homeCrestEl, match.home_crest);
   setCrest(awayCrestEl, match.away_crest);
   homeShortEl.textContent = match.home;
@@ -221,11 +221,12 @@ function renderComments(items, videoUrl) {
       <article class="analysis-comment">
         <span>↑ ${formatNumber(item.score)} likes</span>
         <p>"${escapeHtml(item.text)}"</p>
+        ${item.source_label ? `<small>From ${escapeHtml(item.source_label)}</small>` : ""}
         ${sourceUrl ? `<a href="${sourceUrl}" target="_blank" rel="noreferrer">View source video ↗</a>` : ""}
       </article>
     `;
     }).join("")
-    : `<p class="analysis-empty">No top comments found.</p>`;
+    : `<p class="analysis-empty">No usable YouTube comments found for this match.</p>`;
 }
 
 function setCrest(target, src) {

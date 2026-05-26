@@ -30,6 +30,8 @@ class YouTubeComment:
     score: int          # likeCount on YouTube
     created_utc: float  # publishedAt as unix timestamp
     permalink: str
+    source_label: str
+    source_title: str
 
 
 @dataclass
@@ -58,7 +60,7 @@ def fetch_match_comments(match: MatchSummary) -> YouTubeCommentBatch:
 
     for video in videos:
         try:
-            comments = _fetch_comments(video["id"], settings.youtube_api_key)
+            comments = _fetch_comments(video, settings.youtube_api_key)
             all_comments.extend(comments)
         except YouTubeError:
             # Comments disabled or unavailable — try next video
@@ -132,11 +134,12 @@ def _search_videos(match: MatchSummary, api_key: str) -> List[dict]:
     return videos
 
 
-def _fetch_comments(video_id: str, api_key: str) -> List[YouTubeComment]:
+def _fetch_comments(video: dict, api_key: str) -> List[YouTubeComment]:
     # Fetch top-level comments from one YouTube video.
 
     comments = []
     page_token: Optional[str] = None
+    video_id = video["id"]
 
     for _ in range(3):  # max 3 pages = 300 comments per video
         params = {
@@ -180,6 +183,8 @@ def _fetch_comments(video_id: str, api_key: str) -> List[YouTubeComment]:
                 score=int(snippet.get("likeCount", 0)),
                 created_utc=published_utc,
                 permalink=f"https://youtube.com/watch?v={video_id}",
+                source_label=video.get("channel", "") or "YouTube",
+                source_title=video.get("title", ""),
             ))
 
         page_token = data.get("nextPageToken")

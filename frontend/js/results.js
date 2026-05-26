@@ -99,7 +99,6 @@ function renderMatches(matches, pagination, q, competition, season) {
   renderPagination(pagination);
 }
 
-// i'll need to add location to the match object here for this line: <small>${formatDate(match.date)}${match.round ? ` • ${match.round}` : ""}</small> - refactor to match with my sentiment analysis match mockup UI
 function matchCard(match) {
   return `
     <button class="match-row" data-match="${encodeURIComponent(JSON.stringify(match))}">

@@ -88,7 +88,8 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
 
     try:
         raw_match = await football_api.get_match(payload.match_id)
-        match = football_api.parse_match(raw_match)
+        home_team_detail, away_team_detail = await football_api.get_match_team_details(raw_match)
+        match = football_api.parse_match(raw_match, home_team_detail, away_team_detail)
         if match.status != "FINISHED":
             raise HTTPException(status_code=400, detail="Only finished matches can be analysed.")
         events = football_api.parse_events(raw_match)

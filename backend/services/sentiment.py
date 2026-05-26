@@ -288,15 +288,33 @@ def top_peak_comments(scored_comments: List[Tuple[YouTubeComment, int, float]], 
             minute=minute,
             sentiment=round(sentiment, 3),
             source_url=comment.permalink,
+            source_label=comment.source_label,
+            source_title=comment.source_title,
         )
         for comment, minute, sentiment in ranked
     ]
 
 
 def top_liked_comments(scored_comments: List[Tuple[YouTubeComment, int, float]]) -> List[TopComment]:
-    # Return the top three comments by YouTube like count.
+    # Prefer source diversity, then backfill by likes when only a few videos survived.
 
-    ranked = sorted(scored_comments, key=lambda item: item[0].score, reverse=True)[:3]
+    ranked_all = sorted(scored_comments, key=lambda item: item[0].score, reverse=True)
+    best_by_source: Dict[str, Tuple[YouTubeComment, int, float]] = {}
+    for item in ranked_all:
+        source_url = item[0].permalink
+        if source_url not in best_by_source:
+            best_by_source[source_url] = item
+
+    selected = sorted(best_by_source.values(), key=lambda item: item[0].score, reverse=True)[:3]
+    selected_ids = {id(item) for item in selected}
+    for item in ranked_all:
+        if len(selected) >= 3:
+            break
+        if id(item) in selected_ids:
+            continue
+        selected.append(item)
+        selected_ids.add(id(item))
+
     return [
         TopComment(
             text=_trim(comment.text),
@@ -304,8 +322,10 @@ def top_liked_comments(scored_comments: List[Tuple[YouTubeComment, int, float]])
             minute=0,
             sentiment=round(sentiment, 3),
             source_url=comment.permalink,
+            source_label=comment.source_label,
+            source_title=comment.source_title,
         )
-        for comment, _, sentiment in ranked
+        for comment, _, sentiment in selected
     ]
 
 

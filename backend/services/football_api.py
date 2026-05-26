@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 import re
@@ -14,6 +15,8 @@ from backend.config import get_settings
 from backend.models.schemas import MatchEvent, MatchSummary
 
 BASE_URL = "https://api.football-data.org/v4"
+WIKIDATA_API_URL = "https://www.wikidata.org/w/api.php"
+WIKIDATA_ENTITY_URL = "https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json"
 
 SUPPORTED_COMPETITIONS: Dict[str, str] = {
     "PL": "Premier League",
@@ -28,92 +31,11 @@ SUPPORTED_COMPETITIONS: Dict[str, str] = {
 
 SEARCHABLE_COMPETITIONS = ["PL", "PD", "BL1", "SA", "FL1", "CL"]
 CACHE_TTL_SECONDS = 600
+TEAM_CACHE_TTL_SECONDS = 86_400
+VENUE_CACHE_TTL_SECONDS = 604_800
 _SEARCH_CACHE: Dict[str, tuple[float, List[MatchSummary]]] = {}
-
-TEAM_METADATA: Dict[int, Dict[str, str]] = {
-    1: {"short_name": "Köln", "venue": "RheinEnergieSTADION, Cologne"},
-    2: {"short_name": "Hoffenheim", "venue": "PreZero Arena, Sinsheim"},
-    3: {"short_name": "Leverkusen", "venue": "BayArena, Leverkusen"},
-    4: {"short_name": "Dortmund", "venue": "Signal Iduna Park, Dortmund"},
-    5: {"short_name": "Bayern Munich", "venue": "Allianz Arena, Munich"},
-    11: {"short_name": "Wolfsburg", "venue": "Volkswagen Arena, Wolfsburg"},
-    12: {"short_name": "Werder Bremen", "venue": "Weserstadion, Bremen"},
-    18: {"short_name": "Gladbach", "venue": "Borussia-Park, Mönchengladbach"},
-    19: {"short_name": "Frankfurt", "venue": "Deutsche Bank Park, Frankfurt"},
-    28: {"short_name": "Union Berlin", "venue": "Stadion An der Alten Försterei, Berlin"},
-    44: {"short_name": "Manchester City", "venue": "Etihad Stadium, Manchester"},
-    57: {"short_name": "Arsenal", "venue": "Emirates Stadium, London"},
-    58: {"short_name": "Aston Villa", "venue": "Villa Park, Birmingham"},
-    61: {"short_name": "Chelsea", "venue": "Stamford Bridge, London"},
-    62: {"short_name": "Everton", "venue": "Hill Dickinson Stadium, Liverpool"},
-    63: {"short_name": "Fulham", "venue": "Craven Cottage, London"},
-    64: {"short_name": "Liverpool", "venue": "Anfield, Liverpool"},
-    65: {"short_name": "Manchester United", "venue": "Old Trafford, Manchester"},
-    66: {"short_name": "Newcastle", "venue": "St James' Park, Newcastle upon Tyne"},
-    67: {"short_name": "Tottenham", "venue": "Tottenham Hotspur Stadium, London"},
-    73: {"short_name": "Bournemouth", "venue": "Vitality Stadium, Bournemouth"},
-    76: {"short_name": "Wolves", "venue": "Molineux Stadium, Wolverhampton"},
-    78: {"short_name": "Atlético Madrid", "venue": "Riyadh Air Metropolitano, Madrid"},
-    80: {"short_name": "Espanyol", "venue": "RCDE Stadium, Barcelona"},
-    81: {"short_name": "Barcelona", "venue": "Camp Nou, Barcelona"},
-    86: {"short_name": "Real Madrid", "venue": "Santiago Bernabéu, Madrid"},
-    87: {"short_name": "Rayo Vallecano", "venue": "Campo de Fútbol de Vallecas, Madrid"},
-    90: {"short_name": "Real Betis", "venue": "Estadio Benito Villamarín, Seville"},
-    92: {"short_name": "Real Sociedad", "venue": "Reale Arena, San Sebastián"},
-    94: {"short_name": "Villarreal", "venue": "Estadio de la Cerámica, Villarreal"},
-    95: {"short_name": "Valencia", "venue": "Mestalla, Valencia"},
-    98: {"short_name": "Milan", "venue": "San Siro, Milan"},
-    99: {"short_name": "Fiorentina", "venue": "Stadio Artemio Franchi, Florence"},
-    100: {"short_name": "Roma", "venue": "Stadio Olimpico, Rome"},
-    102: {"short_name": "Atalanta", "venue": "Gewiss Stadium, Bergamo"},
-    103: {"short_name": "Bologna", "venue": "Stadio Renato Dall'Ara, Bologna"},
-    104: {"short_name": "Cagliari", "venue": "Unipol Domus, Cagliari"},
-    107: {"short_name": "Genoa", "venue": "Stadio Luigi Ferraris, Genoa"},
-    108: {"short_name": "Inter Milan", "venue": "San Siro, Milan"},
-    109: {"short_name": "Juventus", "venue": "Allianz Stadium, Turin"},
-    110: {"short_name": "Lazio", "venue": "Stadio Olimpico, Rome"},
-    113: {"short_name": "Napoli", "venue": "Stadio Diego Armando Maradona, Naples"},
-    586: {"short_name": "Torino", "venue": "Stadio Olimpico Grande Torino, Turin"},
-    524: {"short_name": "PSG", "venue": "Parc des Princes, Paris"},
-    523: {"short_name": "Lyon", "venue": "Groupama Stadium, Lyon"},
-    516: {"short_name": "Marseille", "venue": "Orange Vélodrome, Marseille"},
-    548: {"short_name": "Monaco", "venue": "Stade Louis II, Monaco"},
-}
-
-TEAM_VENUES: Dict[str, str] = {
-    "AC Milan": "San Siro, Milan",
-    "AFC Bournemouth": "Vitality Stadium, Bournemouth",
-    "Arsenal FC": "Emirates Stadium, London",
-    "AS Monaco FC": "Stade Louis II, Monaco",
-    "AS Roma": "Stadio Olimpico, Rome",
-    "Aston Villa FC": "Villa Park, Birmingham",
-    "Atlético Madrid": "Riyadh Air Metropolitano, Madrid",
-    "Bayer 04 Leverkusen": "BayArena, Leverkusen",
-    "Borussia Dortmund": "Signal Iduna Park, Dortmund",
-    "Brighton & Hove Albion FC": "Amex Stadium, Brighton",
-    "Burnley FC": "Turf Moor, Burnley",
-    "Chelsea FC": "Stamford Bridge, London",
-    "Crystal Palace FC": "Selhurst Park, London",
-    "FC Barcelona": "Estadi Olímpic Lluís Companys, Barcelona",
-    "FC Bayern München": "Allianz Arena, Munich",
-    "FC Internazionale Milano": "San Siro, Milan",
-    "Fulham FC": "Craven Cottage, London",
-    "Juventus FC": "Allianz Stadium, Turin",
-    "Liverpool FC": "Anfield, Liverpool",
-    "Manchester City FC": "Etihad Stadium, Manchester",
-    "Manchester United FC": "Old Trafford, Manchester",
-    "Newcastle United FC": "St James' Park, Newcastle upon Tyne",
-    "Nottingham Forest FC": "City Ground, Nottingham",
-    "Olympique de Marseille": "Orange Vélodrome, Marseille",
-    "Olympique Lyonnais": "Groupama Stadium, Lyon",
-    "Paris Saint-Germain FC": "Parc des Princes, Paris",
-    "Real Madrid CF": "Santiago Bernabéu, Madrid",
-    "SSC Napoli": "Stadio Diego Armando Maradona, Naples",
-    "Tottenham Hotspur FC": "Tottenham Hotspur Stadium, London",
-    "Valencia CF": "Mestalla, Valencia",
-    "Villarreal CF": "Estadio de la Cerámica, Villarreal",
-    "West Ham United FC": "London Stadium, London",
-}
+_TEAM_CACHE: Dict[int, tuple[float, Dict[str, Any]]] = {}
+_VENUE_CACHE: Dict[str, tuple[float, str]] = {}
 
 NEUTRAL_VENUES: Dict[tuple[str, int, str], str] = {
     ("CL", 2025, "FINAL"): "Puskás Aréna, Budapest",
@@ -304,7 +226,36 @@ async def get_match(match_id: str) -> Dict[str, Any]:
     return await _request_json(f"/matches/{match_id}")
 
 
-def parse_match(raw: Dict[str, Any]) -> MatchSummary:
+async def get_team(team_id: int) -> Dict[str, Any]:
+    # Fetch Football-Data.org team detail and cache it by real upstream team ID.
+
+    cached = _get_cached_team(team_id)
+    if cached is not None:
+        return cached
+
+    data = await _request_json(f"/teams/{team_id}")
+    _set_cached_team(team_id, data)
+    return data
+
+
+async def get_match_team_details(raw: Dict[str, Any]) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    # Best-effort team details for analysis pages; match rendering should survive if either lookup fails.
+
+    home_team_id = _team_id(raw.get("homeTeam", {}))
+    away_team_id = _team_id(raw.get("awayTeam", {}))
+    home_detail, away_detail = await asyncio.gather(
+        _get_team_or_none(home_team_id),
+        _get_team_or_none(away_team_id),
+    )
+    home_detail = await _with_resolved_venue(raw.get("homeTeam", {}), home_detail)
+    return home_detail, away_detail
+
+
+def parse_match(
+    raw: Dict[str, Any],
+    home_team_detail: Optional[Dict[str, Any]] = None,
+    away_team_detail: Optional[Dict[str, Any]] = None,
+) -> MatchSummary:
     # Convert a Football-Data.org match object into an Atmos match summary.
 
     score = raw.get("score", {}).get("fullTime", {})
@@ -329,16 +280,16 @@ def parse_match(raw: Dict[str, Any]) -> MatchSummary:
         away=away_team.get("name", "Away"),
         home_team_id=home_team_id,
         away_team_id=away_team_id,
-        home_short_name=_team_short_name(home_team),
-        away_short_name=_team_short_name(away_team),
-        home_crest=home_team.get("crest"),
-        away_crest=away_team.get("crest"),
+        home_short_name=_team_short_name(home_team, home_team_detail),
+        away_short_name=_team_short_name(away_team, away_team_detail),
+        home_crest=home_team.get("crest") or _team_detail_value(home_team_detail, "crest"),
+        away_crest=away_team.get("crest") or _team_detail_value(away_team_detail, "crest"),
         score=display_score,
         half_time_score=half_time_score,
         competition=SUPPORTED_COMPETITIONS.get(competition_code, competition.get("name", "Competition")),
         competition_code=competition_code,
         date=raw.get("utcDate", ""),
-        venue=_resolve_venue(raw, home_team_id),
+        venue=_resolve_venue(raw, home_team_detail),
         round=_format_round(raw),
         season=_format_season(season.get("startDate")),
         status=raw.get("status"),
@@ -427,6 +378,179 @@ def _set_cached_search(key: str, matches: List[MatchSummary]) -> None:
     _SEARCH_CACHE[key] = (time.monotonic() + CACHE_TTL_SECONDS, matches)
 
 
+def _get_cached_team(team_id: int) -> Optional[Dict[str, Any]]:
+    cached = _TEAM_CACHE.get(team_id)
+    if not cached:
+        return None
+    expires_at, team = cached
+    if expires_at <= time.monotonic():
+        _TEAM_CACHE.pop(team_id, None)
+        return None
+    return team
+
+
+def _set_cached_team(team_id: int, team: Dict[str, Any]) -> None:
+    _TEAM_CACHE[team_id] = (time.monotonic() + TEAM_CACHE_TTL_SECONDS, team)
+
+
+def _get_cached_venue(key: str) -> Optional[str]:
+    cached = _VENUE_CACHE.get(key)
+    if not cached:
+        return None
+    expires_at, venue = cached
+    if expires_at <= time.monotonic():
+        _VENUE_CACHE.pop(key, None)
+        return None
+    return venue
+
+
+def _set_cached_venue(key: str, venue: str) -> None:
+    _VENUE_CACHE[key] = (time.monotonic() + VENUE_CACHE_TTL_SECONDS, venue)
+
+
+async def _get_team_or_none(team_id: Optional[int]) -> Optional[Dict[str, Any]]:
+    if team_id is None:
+        return None
+    try:
+        return await get_team(team_id)
+    except FootballDataError:
+        return None
+
+
+async def _with_resolved_venue(team: Dict[str, Any], team_detail: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if team_detail and _team_detail_value(team_detail, "venue"):
+        return team_detail
+
+    team_id = _team_id(team)
+    primary_name = (
+        _team_detail_value(team_detail, "name")
+        or team.get("name")
+        or _team_detail_value(team_detail, "shortName")
+        or team.get("shortName")
+    )
+    if not primary_name:
+        return team_detail
+
+    cache_key = str(team_id) if team_id else _normalize_text(primary_name)
+    cached = _get_cached_venue(cache_key)
+    if cached:
+        detail = dict(team_detail or {})
+        detail["venue"] = cached
+        return detail
+
+    venue = await _resolve_wikidata_venue(_wikidata_team_name_candidates(team, team_detail))
+    if not venue:
+        return team_detail
+
+    _set_cached_venue(cache_key, venue)
+    detail = dict(team_detail or {})
+    detail["venue"] = venue
+    return detail
+
+
+def _wikidata_team_name_candidates(team: Dict[str, Any], team_detail: Optional[Dict[str, Any]]) -> List[str]:
+    names = [
+        _team_detail_value(team_detail, "name"),
+        team.get("name"),
+        _team_detail_value(team_detail, "shortName"),
+        team.get("shortName"),
+        _team_detail_value(team_detail, "tla"),
+        team.get("tla"),
+    ]
+    candidates: List[str] = []
+    seen: set[str] = set()
+    for name in names:
+        if not isinstance(name, str) or not name.strip():
+            continue
+        clean = name.strip()
+        variants = [
+            clean,
+            _clean_team_name(clean),
+            re.sub(r"\bF\.?C\.?$", "", clean, flags=re.IGNORECASE).strip(),
+            f"{_clean_team_name(clean)} football club",
+        ]
+        for variant in variants:
+            normalized = _normalize_text(variant)
+            if variant and normalized not in seen:
+                candidates.append(variant)
+                seen.add(normalized)
+    return candidates
+
+
+async def _resolve_wikidata_venue(team_names: List[str]) -> Optional[str]:
+    for team_name in team_names:
+        entity_id = await _wikidata_team_entity(team_name)
+        if not entity_id:
+            continue
+        venue_id = await _wikidata_claim_entity(entity_id, "P115")
+        if venue_id:
+            return await _wikidata_entity_label(venue_id)
+    return None
+
+
+async def _wikidata_team_entity(team_name: str) -> Optional[str]:
+    params = {
+        "action": "wbsearchentities",
+        "search": team_name,
+        "language": "en",
+        "format": "json",
+        "limit": 5,
+        "origin": "*",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(WIKIDATA_API_URL, params=params)
+        if response.status_code >= 400:
+            return None
+        for item in response.json().get("search", []):
+            description = str(item.get("description", "")).lower()
+            label = str(item.get("label", ""))
+            if "football" in description or _normalize_text(label) == _normalize_text(team_name):
+                return item.get("id")
+    except (httpx.HTTPError, ValueError):
+        return None
+    return None
+
+
+async def _wikidata_claim_entity(entity_id: str, claim_property: str) -> Optional[str]:
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(WIKIDATA_ENTITY_URL.format(entity_id=entity_id))
+        if response.status_code >= 400:
+            return None
+        entity = response.json().get("entities", {}).get(entity_id, {})
+    except (httpx.HTTPError, ValueError):
+        return None
+
+    for claim in entity.get("claims", {}).get(claim_property, []):
+        value = claim.get("mainsnak", {}).get("datavalue", {}).get("value", {})
+        venue_id = value.get("id") if isinstance(value, dict) else None
+        if venue_id:
+            return venue_id
+    return None
+
+
+async def _wikidata_entity_label(entity_id: str) -> Optional[str]:
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(WIKIDATA_ENTITY_URL.format(entity_id=entity_id))
+        if response.status_code >= 400:
+            return None
+        labels = response.json().get("entities", {}).get(entity_id, {}).get("labels", {})
+    except (httpx.HTTPError, ValueError):
+        return None
+
+    label = labels.get("en", {}).get("value")
+    return label.strip() if isinstance(label, str) and label.strip() else None
+
+
+def _team_detail_value(team_detail: Optional[Dict[str, Any]], key: str) -> Optional[str]:
+    if not team_detail:
+        return None
+    value = team_detail.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def _normalize_text(value: str) -> str:
     ascii_text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", ascii_text.lower())).strip()
@@ -473,7 +597,7 @@ def _with_match_context(label: str, matchday: Optional[int]) -> str:
     return label
 
 
-def _resolve_venue(raw: Dict[str, Any], home_team_id: Optional[int]) -> Optional[str]:
+def _resolve_venue(raw: Dict[str, Any], home_team_detail: Optional[Dict[str, Any]]) -> Optional[str]:
     venue = raw.get("venue")
     if isinstance(venue, str) and venue.strip():
         return venue.strip()
@@ -485,18 +609,22 @@ def _resolve_venue(raw: Dict[str, Any], home_team_id: Optional[int]) -> Optional
     if neutral_venue:
         return neutral_venue
 
-    if home_team_id and home_team_id in TEAM_METADATA:
-        return TEAM_METADATA[home_team_id].get("venue")
+    team_venue = _team_detail_value(home_team_detail, "venue")
+    if team_venue:
+        return team_venue
 
-    home_name = raw.get("homeTeam", {}).get("name", "")
-    return TEAM_VENUES.get(home_name)
+    return None
 
 
-def _team_short_name(team: Dict[str, Any]) -> Optional[str]:
-    team_id = _team_id(team)
-    if team_id and team_id in TEAM_METADATA:
-        return TEAM_METADATA[team_id].get("short_name")
-    name = team.get("shortName") or team.get("tla") or team.get("name")
+def _team_short_name(team: Dict[str, Any], team_detail: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    name = (
+        _team_detail_value(team_detail, "shortName")
+        or team.get("shortName")
+        or _team_detail_value(team_detail, "tla")
+        or team.get("tla")
+        or _team_detail_value(team_detail, "name")
+        or team.get("name")
+    )
     return _clean_team_name(name) if name else None
 
 

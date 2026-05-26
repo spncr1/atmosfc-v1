@@ -86,6 +86,8 @@ class TopComment(BaseModel):
     minute: int
     sentiment: float
     source_url: Optional[str] = None
+    source_label: Optional[str] = None
+    source_title: Optional[str] = None
 
 
 class AnalyseRequest(BaseModel):
