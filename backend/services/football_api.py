@@ -70,8 +70,10 @@ COMPETITION_ALIASES: Dict[str, str] = {
 }
 
 TEAM_ALIASES: Dict[str, List[str]] = {
-    "atleti": ["atletico madrid"],
+    "atleti": ["atletico madrid", "atletico de madrid"],
+    "atletico madrid": ["atletico de madrid"],
     "barca": ["barcelona"],
+    "barcelona": ["fc barcelona"],
     "benfica": ["sl benfica"],
     "bayern munich": ["bayern munchen"],
     "brugge": ["club brugge"],
@@ -88,6 +90,7 @@ TEAM_ALIASES: Dict[str, List[str]] = {
     "inter": ["internazionale", "inter milan"],
     "inter milan": ["internazionale"],
     "liverpool": ["liverpool"],
+    "madrid": ["real madrid"],
     "man city": ["manchester city"],
     "man u": ["manchester united"],
     "man utd": ["manchester united"],
@@ -108,6 +111,12 @@ TEAM_ALIASES: Dict[str, List[str]] = {
     "standard": ["standard liege"],
     "spurs": ["tottenham hotspur", "tottenham"],
     "west ham": ["west ham united"],
+    "wolves": ["wolverhampton wanderers"]
+}
+
+EXCLUSIVE_TEAM_ALIASES: Dict[str, List[str]] = {
+    "madrid": ["real madrid"],
+    "milan": ["ac milan"],
 }
 
 FIXTURE_ALIASES: Dict[str, tuple[str, str]] = {
@@ -191,11 +200,45 @@ FIXTURE_ALIASES: Dict[str, tuple[str, str]] = {
     "minho derby": ("braga", "vitoria guimaraes"),
 }
 
+TEAM_TLA_OVERRIDES: Dict[str, str] = {
+    "arsenal": "ARS",
+    "aston villa": "AVL",
+    "bournemouth": "BOU",
+    "brighton": "BHA",
+    "brighton hove": "BHA",
+    "brighton hove albion": "BHA",
+    "chelsea": "CHE",
+    "crystal palace": "CRY",
+    "everton": "EVE",
+    "fulham": "FUL",
+    "liverpool": "LIV",
+    "man city": "MCI",
+    "manchester city": "MCI",
+    "man united": "MUN",
+    "manchester united": "MUN",
+    "newcastle": "NEW",
+    "newcastle united": "NEW",
+    "nottingham forest": "NFO",
+    "sunderland": "SUN",
+    "tottenham": "TOT",
+    "tottenham hotspur": "TOT",
+    "west ham": "WHU",
+    "west ham united": "WHU",
+    "wolves": "WOL",
+    "wolverhampton": "WOL",
+    "wolverhampton wanderers": "WOL",
+}
+
+TEAM_VENUE_OVERRIDES: Dict[int, str] = {
+    732: "Celtic Park",
+}
+
 
 @dataclass(frozen=True)
 class SearchIntent:
     terms: List[str]
     fixture: Optional[tuple[List[str], List[str]]] = None
+    strict_team: bool = False
 
 
 class FootballDataError(RuntimeError):
@@ -272,6 +315,8 @@ async def search_matches(
                 season_matches.append(summary)
         matches.extend(sorted(season_matches, key=lambda match: match.date, reverse=True))
 
+    if errors and not requested_code:
+        raise FootballDataError(f"Search could not be completed for all competitions: {errors[0]}")
     if not matches and errors:
         raise FootballDataError(errors[0])
     sorted_matches = sorted(matches, key=lambda match: match.date, reverse=True)
@@ -398,6 +443,8 @@ def parse_match(
         away_team_id=away_team_id,
         home_short_name=_team_short_name(home_team, home_team_detail),
         away_short_name=_team_short_name(away_team, away_team_detail),
+        home_tla=_team_tla(home_team, home_team_detail),
+        away_tla=_team_tla(away_team, away_team_detail),
         home_crest=home_team.get("crest") or _team_detail_value(home_team_detail, "crest"),
         away_crest=away_team.get("crest") or _team_detail_value(away_team_detail, "crest"),
         score=display_score,
@@ -461,7 +508,7 @@ def _search_intent(query: str) -> SearchIntent:
         return SearchIntent(terms=[clean], fixture=explicit_fixture)
 
     if _is_known_team_term(clean):
-        return SearchIntent(terms=_team_terms(clean))
+        return SearchIntent(terms=_team_terms(clean), strict_team=True)
 
     fixture = _loose_fixture_query_terms(clean)
     if fixture:
@@ -474,15 +521,18 @@ def _matches_search(match: MatchSummary, intent: SearchIntent) -> bool:
     if intent.fixture:
         first, second = intent.fixture
         return (
-            _team_matches(match.home, first)
-            and _team_matches(match.away, second)
+            _match_team_matches(match, "home", first)
+            and _match_team_matches(match, "away", second)
         ) or (
-            _team_matches(match.home, second)
-            and _team_matches(match.away, first)
+            _match_team_matches(match, "home", second)
+            and _match_team_matches(match, "away", first)
         )
 
+    if intent.strict_team:
+        return _match_team_matches(match, "home", intent.terms) or _match_team_matches(match, "away", intent.terms)
+
     haystack = _normalize_text(f"{match.home} {match.away} {match.competition}")
-    return any(term in haystack for term in intent.terms)
+    return any(_contains_normalized_term(haystack, term) for term in intent.terms)
 
 
 def _fixture_alias_terms(clean_query: str) -> Optional[tuple[List[str], List[str]]]:
@@ -551,7 +601,9 @@ def _team_terms(value: str) -> List[str]:
     clean = _normalize_text(value)
     if not clean:
         return []
-    terms = [clean, *TEAM_ALIASES.get(clean, [])]
+    exclusive_aliases = EXCLUSIVE_TEAM_ALIASES.get(clean)
+    aliases = TEAM_ALIASES.get(clean)
+    terms = exclusive_aliases or ([clean, *aliases] if aliases else [clean])
     seen: set[str] = set()
     unique_terms: List[str] = []
     for term in terms:
@@ -562,9 +614,44 @@ def _team_terms(value: str) -> List[str]:
     return unique_terms
 
 
-def _team_matches(team_name: str, terms: List[str]) -> bool:
-    haystack = _normalize_text(team_name)
-    return any(term in haystack for term in terms)
+def _match_team_matches(match: MatchSummary, side: str, terms: List[str]) -> bool:
+    if side == "home":
+        return _team_matches(match.home, terms, match.home_short_name)
+    return _team_matches(match.away, terms, match.away_short_name)
+
+
+def _team_matches(team_name: str, terms: List[str], *extra_names: Optional[str]) -> bool:
+    team_terms = _team_identity_terms(team_name, *extra_names)
+    return any(term == team_term for term in terms for team_term in team_terms)
+
+
+def _team_identity_terms(team_name: str, *extra_names: Optional[str]) -> set[str]:
+    normalized_values: set[str] = set()
+    for name in (team_name, *extra_names):
+        if not name:
+            continue
+        cleaned = _clean_team_name(name)
+        normalized_values.add(_normalize_text(name))
+        normalized_values.add(_normalize_text(cleaned))
+
+    for alias, targets in TEAM_ALIASES.items():
+        normalized_alias = _normalize_text(alias)
+        normalized_targets = {_normalize_text(target) for target in targets}
+        if normalized_values & ({normalized_alias} | normalized_targets):
+            normalized_values.add(normalized_alias)
+            normalized_values.update(normalized_targets)
+    for alias, targets in EXCLUSIVE_TEAM_ALIASES.items():
+        normalized_targets = {_normalize_text(target) for target in targets}
+        if normalized_values & normalized_targets:
+            normalized_values.add(_normalize_text(alias))
+            normalized_values.update(normalized_targets)
+    return {value for value in normalized_values if value}
+
+
+def _contains_normalized_term(haystack: str, term: str) -> bool:
+    if not haystack or not term:
+        return False
+    return f" {term} " in f" {haystack} "
 
 
 def _event_minute(raw: Dict[str, Any]) -> int:
@@ -645,7 +732,14 @@ async def _with_resolved_venue(team: Dict[str, Any], team_detail: Optional[Dict[
     if team_detail and _team_detail_value(team_detail, "venue"):
         return team_detail
 
-    team_id = _team_id(team)
+    team_id = _team_id(team) or _team_id(team_detail or {})
+    venue_override = TEAM_VENUE_OVERRIDES.get(team_id) if team_id else None
+    if venue_override:
+        detail = dict(team_detail or {})
+        detail["venue"] = venue_override
+        _set_cached_venue(str(team_id), venue_override)
+        return detail
+
     primary_name = (
         _team_detail_value(team_detail, "name")
         or team.get("name")
@@ -691,6 +785,7 @@ def _wikidata_team_name_candidates(team: Dict[str, Any], team_detail: Optional[D
             clean,
             _clean_team_name(clean),
             re.sub(r"\bF\.?C\.?$", "", clean, flags=re.IGNORECASE).strip(),
+            re.sub(r"\bFC$", "F.C.", clean, flags=re.IGNORECASE).strip(),
             f"{_clean_team_name(clean)} football club",
         ]
         for variant in variants:
@@ -729,7 +824,9 @@ async def _wikidata_team_entity(team_name: str) -> Optional[str]:
         for item in response.json().get("search", []):
             description = str(item.get("description", "")).lower()
             label = str(item.get("label", ""))
-            if "football" in description or _normalize_text(label) == _normalize_text(team_name):
+            normalized_label = _normalize_text(label).replace(" f c", " fc")
+            normalized_team_name = _normalize_text(team_name).replace(" f c", " fc")
+            if "football" in description or normalized_label == normalized_team_name:
                 return item.get("id")
     except (httpx.HTTPError, ValueError):
         return None
@@ -815,9 +912,9 @@ def _with_match_context(label: str, matchday: Optional[int]) -> str:
     if label in {"Group stage", "League phase"}:
         return f"{label} - Matchday {matchday}"
     if matchday == 1:
-        return f"{label} first leg"
+        return f"{label} 1st leg"
     if matchday == 2:
-        return f"{label} second leg"
+        return f"{label} 2nd leg"
     return label
 
 
@@ -844,12 +941,22 @@ def _team_short_name(team: Dict[str, Any], team_detail: Optional[Dict[str, Any]]
     name = (
         _team_detail_value(team_detail, "shortName")
         or team.get("shortName")
-        or _team_detail_value(team_detail, "tla")
-        or team.get("tla")
         or _team_detail_value(team_detail, "name")
         or team.get("name")
+        or _team_detail_value(team_detail, "tla")
+        or team.get("tla")
     )
     return _clean_team_name(name) if name else None
+
+
+def _team_tla(team: Dict[str, Any], team_detail: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    value = _team_detail_value(team_detail, "tla") or team.get("tla")
+    if isinstance(value, str) and value.strip():
+        return value.strip().upper()
+    display_name = _team_short_name(team, team_detail)
+    if not display_name:
+        return None
+    return TEAM_TLA_OVERRIDES.get(_normalize_text(display_name))
 
 
 def _team_id(team: Dict[str, Any]) -> Optional[int]:
@@ -861,11 +968,49 @@ def _team_id(team: Dict[str, Any]) -> Optional[int]:
 
 
 def _clean_team_name(name: str) -> str:
+    clean = name.strip()
+    replacements = {
+        "ACF Fiorentina": "Fiorentina",
+        "Athletic Club": "Athletic Bilbao",
+        "Bayer 04 Leverkusen": "Leverkusen",
+        "Borussia Mönchengladbach": "Gladbach",
+        "Brighton Hove": "Brighton",
+        "Brighton Hove Albion": "Brighton",
+        "Brighton & Hove Albion": "Brighton",
+        "Brighton & Hove Albion FC": "Brighton",
+        "Cagliari Calcio": "Cagliari",
+        "Club Atlético de Madrid": "Atlético Madrid",
+        "Club Atletico de Madrid": "Atlético Madrid",
+        "Club Brugge KV": "Club Brugge",
+        "Deportivo Alavés": "Alavés",
+        "FC Bayern München": "Bayern Munich",
+        "FC Internazionale Milano": "Inter Milan",
+        "FC Nantes": "Nantes",
+        "Internazionale": "Inter Milan",
+        "Feyenoord Rotterdam": "Feyenoord",
+        "Genoa CFC": "Genoa",
+        "Hellas Verona FC": "Hellas Verona",
+        "Newcastle United": "Newcastle",
+        "Olympique Lyon": "Lyon",
+        "Olympique Lyonnais": "Lyon",
+        "Olympique de Marseille": "Marseille",
+        "Paris Saint-Germain FC": "PSG",
+        "RC Lens": "Lens",
+        "Real Sociedad de Fútbol": "Real Sociedad",
+        "SSC Napoli": "Napoli",
+        "Sunderland AFC": "Sunderland",
+        "Tottenham Hotspur": "Tottenham",
+        "Udinese Calcio": "Udinese",
+        "US Cremonese": "Cremonese",
+        "US Lecce": "Lecce",
+        "Wolverhampton": "Wolves",
+        "Wolverhampton Wanderers": "Wolves",
+        "Wolverhampton Wanderers FC": "Wolves",
+    }
+    if clean in replacements:
+        return replacements[clean]
     return (
-        name.replace("FC Bayern München", "Bayern Munich")
-        .replace("Paris Saint-Germain FC", "PSG")
-        .replace("Club Atlético de Madrid", "Atlético Madrid")
-        .removeprefix("FC ")
+        clean.removeprefix("FC ")
         .removesuffix(" FC")
         .removesuffix(" CF")
         .removesuffix(" AFC")

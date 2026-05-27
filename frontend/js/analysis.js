@@ -51,15 +51,15 @@ function renderAnalysis(data) {
 function renderMatchHeader(match) {
   badgesEl.innerHTML = `
     <span class="analysis-pill">${escapeHtml(match.competition || "Competition")}</span>
-    <span class="analysis-pill analysis-pill-muted">${escapeHtml(match.round || match.season || "Stage unavailable")}</span>
+    <span class="analysis-pill analysis-pill-muted">${escapeHtml(stageWithSeason(match))}</span>
   `;
   matchDetailEl.textContent = [formatDate(match.date), match.venue || "Venue unavailable"].filter(Boolean).join(" · ");
   setCrest(homeCrestEl, match.home_crest);
   setCrest(awayCrestEl, match.away_crest);
-  homeShortEl.textContent = match.home;
-  awayShortEl.textContent = match.away;
-  homeFullEl.textContent = `${match.home_short_name || shortTeamName(match.home)} (H)`;
-  awayFullEl.textContent = `${match.away_short_name || shortTeamName(match.away)} (A)`;
+  homeShortEl.textContent = displayTeamName(match, "home");
+  awayShortEl.textContent = displayTeamName(match, "away");
+  homeFullEl.textContent = `${match.home} (H)`;
+  awayFullEl.textContent = `${match.away} (A)`;
   scoreEl.textContent = match.score ? match.score.replace(" - ", " - ") : "";
   if (match.half_time_score) {
     halfTimeEl.textContent = `HT ${match.half_time_score.replace(" - ", " - ")}`;
@@ -68,6 +68,15 @@ function renderMatchHeader(match) {
     halfTimeEl.textContent = "";
     halfTimeEl.hidden = true;
   }
+}
+
+function stageWithSeason(match) {
+  return [match.round || "Stage unavailable", match.season].filter(Boolean).join(" · ");
+}
+
+function displayTeamName(match, side) {
+  const shortName = match[`${side}_short_name`];
+  return shortName || shortTeamName(match[side]);
 }
 
 function renderSummary(meta) {
@@ -103,28 +112,45 @@ function renderChart(buckets) {
     return;
   }
 
-  const labels = buckets.map((bucket, index) => index === 0 ? "FT" : `${bucket.hour_offset}h`);
   const peakIndex = buckets.reduce((best, bucket, index) => {
     if (best === -1) return index;
     const current = buckets[best];
     return bucket.intensity > current.intensity ? index : best;
   }, -1);
+  const chartPoints = buckets.map((bucket, index) => ({
+    x: bucket.hour_offset,
+    y: bucket.intensity,
+    bucketIndex: index,
+  }));
+  const finalBucket = buckets[buckets.length - 1];
+  chartPoints.push({
+    x: 24,
+    y: finalBucket.intensity,
+    bucketIndex: buckets.length - 1,
+    terminal: true,
+  });
 
   pulseChart = new Chart(ctx, {
     type: "line",
     data: {
-      labels,
       datasets: [
         {
           label: "Reaction intensity",
-          data: buckets.map((bucket) => bucket.intensity),
+          data: chartPoints,
           borderColor: "#C8FF47",
           borderWidth: 2.5,
           pointBackgroundColor: "#C8FF47",
           pointBorderColor: "#C8FF47",
-          pointRadius: buckets.map((_, index) => index === peakIndex ? 6 : 3),
-          pointHoverRadius: buckets.map((_, index) => index === peakIndex ? 7 : 4),
+          pointRadius: chartPoints.map((point) => {
+            if (point.terminal) return 0;
+            return point.bucketIndex === peakIndex ? 6 : 3;
+          }),
+          pointHoverRadius: chartPoints.map((point) => {
+            if (point.terminal) return 0;
+            return point.bucketIndex === peakIndex ? 7 : 4;
+          }),
           tension: 0.35,
+          clip: false,
           fill: false,
         },
       ],
@@ -141,8 +167,18 @@ function renderChart(buckets) {
           grid: { color: "#242428" },
         },
         x: {
+          type: "linear",
+          min: 0,
+          max: 24,
           title: { display: true, text: "Hours after full time", color: "#505058" },
-          ticks: { color: "#505058", font: { size: 11 } },
+          ticks: {
+            color: "#505058",
+            font: { size: 11 },
+            stepSize: 3,
+            callback(value) {
+              return value === 0 ? "FT" : `${value}h`;
+            },
+          },
           grid: { color: "#242428" },
         },
       },
@@ -151,11 +187,11 @@ function renderChart(buckets) {
         tooltip: {
           callbacks: {
             label(context) {
-              const bucket = buckets[context.dataIndex];
+              const bucket = buckets[context.raw.bucketIndex];
               return `Intensity ${Math.round(bucket.intensity)}`;
             },
             afterLabel(context) {
-              const bucket = buckets[context.dataIndex];
+              const bucket = buckets[context.raw.bucketIndex];
               return [
                 `VADER sentiment score: ${bucket.sentiment.toFixed(2)} (${sentimentLabel(bucket.sentiment).toLowerCase()})`,
                 `${formatNumber(bucket.comment_count)} comments in this window`,
@@ -240,14 +276,49 @@ function setCrest(target, src) {
   target.onerror = () => { target.hidden = true; };
 }
 
+// will add more to this as the list expands
 function shortTeamName(name) {
-  return (name || "")
+  const clean = String(name || "").trim();
+  const replacements = {
+    "ACF Fiorentina": "Fiorentina",
+    "Athletic Club": "Athletic Bilbao",
+    "Bayer 04 Leverkusen": "Leverkusen",
+    "Brighton & Hove Albion": "Brighton",
+    "Borussia Mönchengladbach": "Gladbach",
+    "Cagliari Calcio": "Cagliari",
+    "Club Atlético de Madrid": "Atlético Madrid",
+    "Club Atletico de Madrid": "Atlético Madrid",
+    "Deportivo Alavés": "Alavés",
+    "FC Bayern München": "Bayern Munich",
+    "FC Internazionale Milano": "Inter Milan",
+    "FC Nantes": "Nantes",
+    "Feyenoord Rotterdam": "Feyenoord",
+    "Genoa CFC": "Genoa",
+    "Hellas Verona FC": "Hellas Verona",
+    "Internazionale": "Inter Milan",
+    "Leeds United": "Leeds",
+    "Newcastle United": "Newcastle",
+    "Olympique Lyon": "Lyon",
+    "Olympique Lyonnais": "Lyon",
+    "Olympique de Marseille": "Marseille",
+    "Paris Saint-Germain FC": "PSG",
+    "RC Lens": "Lens",
+    "Real Sociedad de Fútbol": "Real Sociedad",
+    "SSC Napoli": "Napoli",
+    "Sunderland AFC": "Sunderland",
+    "Tottenham Hotspur": "Tottenham",
+    "Udinese Calcio": "Udinese",
+    "US Cremonese": "Cremonese",
+    "US Lecce": "Lecce",
+    "Wolverhampton Wanderers": "Wolves"
+  };
+  if (replacements[clean]) return replacements[clean];
+  return clean
     .replace(/^FC\s+/i, "")
     .replace(/\s+FC$/i, "")
     .replace(/\s+CF$/i, "")
     .replace(/\s+AFC$/i, "")
-    .replace("Paris Saint-Germain", "PSG")
-    .replace("FC Bayern München", "Bayern Munich");
+    .replace("Paris Saint-Germain", "PSG");
 }
 
 function sentimentLabel(score) {

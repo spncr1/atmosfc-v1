@@ -64,13 +64,75 @@ function matchCard(match) {
     <button class="match-card" data-match="${encodeURIComponent(JSON.stringify(match))}">
       <span class="match-card__meta">${match.competition} - ${formatDate(match.date)}</span>
       <span class="match-card__teams">
-        <span class="match-card__team">${teamCrest(match.home_crest, match.home)}${match.home}</span>
-        <strong>${match.score}</strong>
-        <span class="match-card__team">${match.away}${teamCrest(match.away_crest, match.away)}</span>
+        <span class="match-card__team">${teamCrest(match.home_crest, match.home)}${displayTeamName(match, "home")}</span>
+        <strong>${match.score || ""}</strong>
+        <span class="match-card__team">${displayTeamName(match, "away")}${teamCrest(match.away_crest, match.away)}</span>
       </span>
       <span class="match-card__round">${match.round || match.season || ""}</span>
     </button>
   `;
+}
+
+function displayTeamName(match, side) {
+  const tla = match[`${side}_tla`];
+  return tla || compactTeamName(match[`${side}_short_name`] || match[side]);
+}
+
+function compactTeamName(name) {
+  const clean = String(name || "").trim();
+  const replacements = {
+    "AFC Bournemouth": "BOU",
+    "ACF Fiorentina": "Fiorentina",
+    "Arsenal": "ARS",
+    "Aston Villa": "AVL",
+    "Athletic Club": "Athletic Bilbao",
+    "Bayer 04 Leverkusen": "Leverkusen",
+    "Brighton Hove": "BHA",
+    "Brighton & Hove Albion": "BHA",
+    "Borussia Mönchengladbach": "Gladbach",
+    "Cagliari Calcio": "Cagliari",
+    "Chelsea": "CHE",
+    "Club Atlético de Madrid": "Atlético Madrid",
+    "Club Atletico de Madrid": "Atlético Madrid",
+    "Crystal Palace": "CRY",
+    "Deportivo Alavés": "Alavés",
+    "Everton": "EVE",
+    "FC Bayern München": "Bayern Munich",
+    "FC Internazionale Milano": "Inter Milan",
+    "FC Nantes": "Nantes",
+    "Fulham": "FUL",
+    "Internazionale": "Inter Milan",
+    "Feyenoord Rotterdam": "Feyenoord",
+    "Genoa CFC": "Genoa",
+    "Hellas Verona FC": "Hellas Verona",
+    "Liverpool": "LIV",
+    "Manchester City": "MCI",
+    "Manchester United": "MUN",
+    "Newcastle United": "Newcastle",
+    "Nottingham Forest": "NFO",
+    "Olympique Lyon": "Lyon",
+    "Olympique Lyonnais": "Lyon",
+    "Olympique de Marseille": "Marseille",
+    "Paris Saint-Germain FC": "PSG",
+    "RC Lens": "Lens",
+    "Real Sociedad de Fútbol": "Real Sociedad",
+    "SSC Napoli": "Napoli",
+    "Sunderland AFC": "Sunderland",
+    "Tottenham Hotspur": "Tottenham",
+    "West Ham United": "WHU",
+    "Wolverhampton": "WOL",
+    "Wolverhampton Wanderers": "WOL",
+    "Udinese Calcio": "Udinese",
+    "US Cremonese": "Cremonese",
+    "US Lecce": "Lecce",
+  };
+  if (replacements[clean]) return replacements[clean];
+  return clean
+    .replace(/^FC\s+/i, "")
+    .replace(/\s+FC$/i, "")
+    .replace(/\s+CF$/i, "")
+    .replace(/\s+AFC$/i, "")
+    .replace("Paris Saint-Germain", "PSG");
 }
 
 function teamCrest(src, team) {

@@ -104,20 +104,73 @@ function matchCard(match) {
     <button class="match-row" data-match="${encodeURIComponent(JSON.stringify(match))}">
       <span class="match-row-meta">
         <em>${match.competition}</em>
-        <small>${formatDate(match.date)}${match.round ? ` • ${match.round}` : ""}</small>
+        <small class="match-row-stage">${stageWithSeason(match)}</small>
+        <small>${formatDate(match.date)}</small>
       </span>
       <span class="match-row-main">
-        <strong class="match-team match-team-home">${teamCrest(match.home_crest, match.home)}<span>${match.home}</span></strong>
+        <strong class="match-team match-team-home">${teamCrest(match.home_crest, match.home)}<span>${displayTeamName(match, "home")}</span></strong>
         <b>${match.score || ""}</b>
-        <strong class="match-team match-team-away"><span>${match.away}</span>${teamCrest(match.away_crest, match.away)}</strong>
+        <strong class="match-team match-team-away"><span>${displayTeamName(match, "away")}</span>${teamCrest(match.away_crest, match.away)}</strong>
       </span>
       <span class="match-row-footer">
-        <small>${match.season || "Selected season"}</small>
         <small>YouTube comments</small>
         <i>Analyse</i>
       </span>
     </button>
   `;
+}
+
+function stageWithSeason(match) {
+  return [match.round || "Stage unavailable", match.season].filter(Boolean).join(" · ");
+}
+
+function displayTeamName(match, side) {
+  const shortName = match[`${side}_short_name`];
+  return shortName || shortTeamName(match[side]);
+}
+
+function shortTeamName(name) {
+  const clean = String(name || "").trim();
+  const replacements = {
+    "ACF Fiorentina": "Fiorentina",
+    "Athletic Club": "Athletic Bilbao",
+    "Bayer 04 Leverkusen": "Leverkusen",
+    "Brighton & Hove Albion": "Brighton",
+    "Borussia Mönchengladbach": "Gladbach",
+    "Cagliari Calcio": "Cagliari",
+    "Club Atlético de Madrid": "Atlético Madrid",
+    "Club Atletico de Madrid": "Atlético Madrid",
+    "Deportivo Alavés": "Alavés",
+    "FC Bayern München": "Bayern Munich",
+    "FC Internazionale Milano": "Inter Milan",
+    "FC Nantes": "Nantes",
+    "Feyenoord Rotterdam": "Feyenoord",
+    "Genoa CFC": "Genoa",
+    "Hellas Verona FC": "Hellas Verona",
+    "Internazionale": "Inter Milan",
+    "Leeds United": "Leeds",
+    "Newcastle United": "Newcastle",
+    "Olympique Lyon": "Lyon",
+    "Olympique Lyonnais": "Lyon",
+    "Olympique de Marseille": "Marseille",
+    "Paris Saint-Germain FC": "PSG",
+    "RC Lens": "Lens",
+    "Real Sociedad de Fútbol": "Real Sociedad",
+    "SSC Napoli": "Napoli",
+    "Sunderland AFC": "Sunderland",
+    "Tottenham Hotspur": "Tottenham",
+    "Udinese Calcio": "Udinese",
+    "US Cremonese": "Cremonese",
+    "US Lecce": "Lecce",
+    "Wolverhampton Wanderers": "Wolves"
+  };
+  if (replacements[clean]) return replacements[clean];
+  return clean
+    .replace(/^FC\s+/i, "")
+    .replace(/\s+FC$/i, "")
+    .replace(/\s+CF$/i, "")
+    .replace(/\s+AFC$/i, "")
+    .replace("Paris Saint-Germain", "PSG");
 }
 
 function teamCrest(src, team) {

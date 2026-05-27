@@ -15,18 +15,14 @@ from backend.services.youtube import YouTubeComment
 BUCKET_SIZE = 5
 MATCH_MINUTES = 90
 REACTION_WINDOWS = [
-    (0, 2),
-    (2, 4),
-    (4, 6),
-    (6, 8),
-    (8, 10),
-    (10, 12),
-    (12, 14),
-    (14, 16),
-    (16, 18),
-    (18, 20),
-    (20, 22),
-    (22, 24),
+    (0, 3),
+    (3, 6),
+    (6, 9),
+    (9, 12),
+    (12, 15),
+    (15, 18),
+    (18, 21),
+    (21, 24),
 ]
 
 VIBE_DESCRIPTORS = [
