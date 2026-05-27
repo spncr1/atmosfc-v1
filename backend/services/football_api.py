@@ -135,6 +135,7 @@ FIXTURE_ALIASES: Dict[str, tuple[str, str]] = {
     "brighton palace": ("brighton hove albion", "crystal palace"),
     "fulham palace": ("fulham", "crystal palace"),
     "west ham palace": ("west ham united", "crystal palace"),
+    
     # Spain
     "el clasico": ("real madrid", "barcelona"),
     "clasico": ("real madrid", "barcelona"),
@@ -146,6 +147,7 @@ FIXTURE_ALIASES: Dict[str, tuple[str, str]] = {
     "derbi sevillano": ("sevilla", "real betis"),
     "basque derby": ("athletic club", "real sociedad"),
     "valencian derby": ("valencia", "villarreal"),
+    
     # Germany
     "der klassiker": ("bayern munich", "borussia dortmund"),
     "klassiker": ("bayern munich", "borussia dortmund"),
@@ -153,6 +155,7 @@ FIXTURE_ALIASES: Dict[str, tuple[str, str]] = {
     "rhein derby": ("koln", "borussia monchengladbach"),
     "berlin derby": ("union berlin", "hertha berlin"),
     "hamburg derby": ("hamburger sv", "st pauli"),
+    
     # France
     "le classique": ("paris saint germain", "marseille"),
     "le classico": ("paris saint germain", "marseille"),
@@ -162,6 +165,7 @@ FIXTURE_ALIASES: Dict[str, tuple[str, str]] = {
     "derby de la garonne": ("bordeaux", "toulouse"),
     "derby du nord": ("lille", "lens"),
     "derby breton": ("rennes", "nantes"),
+    
     # Italy
     "derby della madonnina": ("inter milan", "ac milan"),
     "milan derby": ("inter milan", "ac milan"),
@@ -171,6 +175,7 @@ FIXTURE_ALIASES: Dict[str, tuple[str, str]] = {
     "derby della mole": ("juventus", "torino"),
     "turin derby": ("juventus", "torino"),
     "derby del sole": ("roma", "napoli"),
+    
     # Netherlands
     "de klassieker": ("ajax", "feyenoord"),
     "klassieker": ("ajax", "feyenoord"),
@@ -180,6 +185,7 @@ FIXTURE_ALIASES: Dict[str, tuple[str, str]] = {
     "kraker": ("psv", "feyenoord"),
     "rotterdam derby": ("feyenoord", "sparta rotterdam"),
     "twente derby": ("twente", "heracles"),
+    
     # Belgium
     "belgian clasico": ("anderlecht", "standard liege"),
     "clasico belge": ("anderlecht", "standard liege"),
@@ -189,6 +195,7 @@ FIXTURE_ALIASES: Dict[str, tuple[str, str]] = {
     "walloon derby": ("standard liege", "charleroi"),
     "flemish derby": ("club brugge", "gent"),
     "battle of flanders": ("club brugge", "gent"),
+    
     # Portugal
     "o classico": ("benfica", "fc porto"),
     "classico portugues": ("benfica", "fc porto"),
