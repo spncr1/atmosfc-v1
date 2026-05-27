@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 import re
@@ -71,15 +72,130 @@ COMPETITION_ALIASES: Dict[str, str] = {
 TEAM_ALIASES: Dict[str, List[str]] = {
     "atleti": ["atletico madrid"],
     "barca": ["barcelona"],
+    "benfica": ["sl benfica"],
+    "bayern munich": ["bayern munchen"],
+    "brugge": ["club brugge"],
+    "bvb": ["borussia dortmund"],
     "bayern": ["bayern munchen", "bayern munich"],
+    "mcfc": ["manchester city"],
+    "dortmund": ["borussia dortmund"],
+    "everton": ["everton"],
+    "fulham": ["fulham"],
+    "gladbach": ["borussia monchengladbach", "monchengladbach"],
+    "porto": ["fc porto"],
+    "porto fc": ["fc porto"],
+    "rsca": ["anderlecht"],
     "inter": ["internazionale", "inter milan"],
     "inter milan": ["internazionale"],
+    "liverpool": ["liverpool"],
     "man city": ["manchester city"],
+    "man u": ["manchester united"],
     "man utd": ["manchester united"],
     "man united": ["manchester united"],
+    "manchester utd": ["manchester united"],
+    "mufc": ["manchester united"],
+    "milan": ["ac milan"],
+    "monaco": ["as monaco"],
+    "napoli": ["ssc napoli"],
+    "ol": ["olympique lyonnais", "lyon"],
+    "om": ["olympique de marseille", "marseille"],
+    "palace": ["crystal palace"],
     "psg": ["paris saint germain"],
+    "rma": ["real madrid"],
+    "sociedad": ["real sociedad"],
+    "sporting lisbon": ["sporting cp"],
+    "sporting portugal": ["sporting cp"],
+    "standard": ["standard liege"],
     "spurs": ["tottenham hotspur", "tottenham"],
+    "west ham": ["west ham united"],
 }
+
+FIXTURE_ALIASES: Dict[str, tuple[str, str]] = {
+    # England
+    "manchester derby": ("manchester city", "manchester united"),
+    "city united": ("manchester city", "manchester united"),
+    "merseyside derby": ("liverpool", "everton"),
+    "north london derby": ("arsenal", "tottenham"),
+    "north west derby": ("liverpool", "manchester united"),
+    "northwest derby": ("liverpool", "manchester united"),
+    "second city derby": ("aston villa", "birmingham city"),
+    "tyne wear derby": ("newcastle united", "sunderland"),
+    "west london derby": ("chelsea", "fulham"),
+    "east london derby": ("west ham united", "millwall"),
+    "m23 derby": ("brighton hove albion", "crystal palace"),
+    "brighton palace": ("brighton hove albion", "crystal palace"),
+    "fulham palace": ("fulham", "crystal palace"),
+    "west ham palace": ("west ham united", "crystal palace"),
+    # Spain
+    "el clasico": ("real madrid", "barcelona"),
+    "clasico": ("real madrid", "barcelona"),
+    "el derbi madrileno": ("real madrid", "atletico madrid"),
+    "madrid derby": ("real madrid", "atletico madrid"),
+    "derbi barceloni": ("barcelona", "espanyol"),
+    "barcelona derby": ("barcelona", "espanyol"),
+    "seville derby": ("sevilla", "real betis"),
+    "derbi sevillano": ("sevilla", "real betis"),
+    "basque derby": ("athletic club", "real sociedad"),
+    "valencian derby": ("valencia", "villarreal"),
+    # Germany
+    "der klassiker": ("bayern munich", "borussia dortmund"),
+    "klassiker": ("bayern munich", "borussia dortmund"),
+    "revierderby": ("borussia dortmund", "schalke"),
+    "rhein derby": ("koln", "borussia monchengladbach"),
+    "berlin derby": ("union berlin", "hertha berlin"),
+    "hamburg derby": ("hamburger sv", "st pauli"),
+    # France
+    "le classique": ("paris saint germain", "marseille"),
+    "le classico": ("paris saint germain", "marseille"),
+    "derby rhone alpes": ("lyon", "saint etienne"),
+    "derby du rhone": ("lyon", "saint etienne"),
+    "derby de la cote d azur": ("nice", "monaco"),
+    "derby de la garonne": ("bordeaux", "toulouse"),
+    "derby du nord": ("lille", "lens"),
+    "derby breton": ("rennes", "nantes"),
+    # Italy
+    "derby della madonnina": ("inter milan", "ac milan"),
+    "milan derby": ("inter milan", "ac milan"),
+    "derby d italia": ("inter milan", "juventus"),
+    "derby della capitale": ("roma", "lazio"),
+    "rome derby": ("roma", "lazio"),
+    "derby della mole": ("juventus", "torino"),
+    "turin derby": ("juventus", "torino"),
+    "derby del sole": ("roma", "napoli"),
+    # Netherlands
+    "de klassieker": ("ajax", "feyenoord"),
+    "klassieker": ("ajax", "feyenoord"),
+    "de topper": ("ajax", "psv"),
+    "topper": ("ajax", "psv"),
+    "de kraker": ("psv", "feyenoord"),
+    "kraker": ("psv", "feyenoord"),
+    "rotterdam derby": ("feyenoord", "sparta rotterdam"),
+    "twente derby": ("twente", "heracles"),
+    # Belgium
+    "belgian clasico": ("anderlecht", "standard liege"),
+    "clasico belge": ("anderlecht", "standard liege"),
+    "bruges derby": ("club brugge", "cercle brugge"),
+    "brugge derby": ("club brugge", "cercle brugge"),
+    "brussels derby": ("anderlecht", "union saint gilloise"),
+    "walloon derby": ("standard liege", "charleroi"),
+    "flemish derby": ("club brugge", "gent"),
+    "battle of flanders": ("club brugge", "gent"),
+    # Portugal
+    "o classico": ("benfica", "fc porto"),
+    "classico portugues": ("benfica", "fc porto"),
+    "derby de lisboa": ("benfica", "sporting cp"),
+    "lisbon derby": ("benfica", "sporting cp"),
+    "derby da invicta": ("fc porto", "boavista"),
+    "porto derby": ("fc porto", "boavista"),
+    "derby do minho": ("braga", "vitoria guimaraes"),
+    "minho derby": ("braga", "vitoria guimaraes"),
+}
+
+
+@dataclass(frozen=True)
+class SearchIntent:
+    terms: List[str]
+    fixture: Optional[tuple[List[str], List[str]]] = None
 
 
 class FootballDataError(RuntimeError):
@@ -135,7 +251,7 @@ async def search_matches(
 
     codes = [requested_code] if requested_code else SEARCHABLE_COMPETITIONS
     seasons = [season] if season else list(reversed(allowed_seasons()))
-    search_terms = _search_terms(query)
+    search_intent = _search_intent(query)
     matches: List[MatchSummary] = []
     errors: List[str] = []
 
@@ -151,7 +267,7 @@ async def search_matches(
                 summary = parse_match(raw)
                 if summary.status != "FINISHED":
                     continue
-                if search_terms and not _matches_search(summary, search_terms):
+                if search_intent.terms and not _matches_search(summary, search_intent):
                     continue
                 season_matches.append(summary)
         matches.extend(sorted(season_matches, key=lambda match: match.date, reverse=True))
@@ -264,7 +380,7 @@ def parse_match(
     away_score = score.get("away")
     half_home = half_time.get("home")
     half_away = half_time.get("away")
-    display_score = "TBD" if home_score is None or away_score is None else f"{home_score}-{away_score}"
+    display_score = None if home_score is None or away_score is None else f"{home_score}-{away_score}"
     half_time_score = None if half_home is None or half_away is None else f"{half_home}-{half_away}"
     competition = raw.get("competition", {})
     competition_code = competition.get("code", "")
@@ -331,15 +447,123 @@ def parse_events(raw: Dict[str, Any]) -> List[MatchEvent]:
     return sorted(events, key=lambda event: event.minute)
 
 
-def _search_terms(query: str) -> List[str]:
+def _search_intent(query: str) -> SearchIntent:
     clean = _normalize_text(query)
     if not clean:
-        return []
-    return [clean, *TEAM_ALIASES.get(clean, [])]
+        return SearchIntent(terms=[])
+
+    rivalry = _fixture_alias_terms(clean)
+    if rivalry:
+        return SearchIntent(terms=[clean], fixture=rivalry)
+
+    explicit_fixture = _explicit_fixture_query_terms(clean)
+    if explicit_fixture:
+        return SearchIntent(terms=[clean], fixture=explicit_fixture)
+
+    if _is_known_team_term(clean):
+        return SearchIntent(terms=_team_terms(clean))
+
+    fixture = _loose_fixture_query_terms(clean)
+    if fixture:
+        return SearchIntent(terms=[clean], fixture=fixture)
+
+    return SearchIntent(terms=_team_terms(clean))
 
 
-def _matches_search(match: MatchSummary, terms: List[str]) -> bool:
+def _matches_search(match: MatchSummary, intent: SearchIntent) -> bool:
+    if intent.fixture:
+        first, second = intent.fixture
+        return (
+            _team_matches(match.home, first)
+            and _team_matches(match.away, second)
+        ) or (
+            _team_matches(match.home, second)
+            and _team_matches(match.away, first)
+        )
+
     haystack = _normalize_text(f"{match.home} {match.away} {match.competition}")
+    return any(term in haystack for term in intent.terms)
+
+
+def _fixture_alias_terms(clean_query: str) -> Optional[tuple[List[str], List[str]]]:
+    teams = FIXTURE_ALIASES.get(clean_query)
+    if not teams:
+        return None
+    return (_team_terms(teams[0]), _team_terms(teams[1]))
+
+
+def _explicit_fixture_query_terms(clean_query: str) -> Optional[tuple[List[str], List[str]]]:
+    splitter_match = re.search(r"\b(?:v|vs|versus|against|x)\b", clean_query)
+    if splitter_match:
+        left = clean_query[:splitter_match.start()].strip()
+        right = clean_query[splitter_match.end():].strip()
+        if left and right:
+            return (_team_terms(left), _team_terms(right))
+
+    for separator in (" - ", " / "):
+        padded_query = f" {clean_query} "
+        if separator in padded_query:
+            left, right = padded_query.split(separator, 1)
+            left = left.strip()
+            right = right.strip()
+            if left and right:
+                return (_team_terms(left), _team_terms(right))
+
+    return None
+
+
+def _loose_fixture_query_terms(clean_query: str) -> Optional[tuple[List[str], List[str]]]:
+    known_team = _split_known_team_pair(clean_query)
+    if known_team:
+        left, right = known_team
+        return (_team_terms(left), _team_terms(right))
+
+    return None
+
+
+def _split_known_team_pair(clean_query: str) -> Optional[tuple[str, str]]:
+    known_terms = sorted(_known_team_terms(), key=len, reverse=True)
+    for left in known_terms:
+        if not clean_query.startswith(f"{left} "):
+            continue
+        right = clean_query[len(left):].strip()
+        if right and _is_known_team_term(right):
+            return (left, right)
+    return None
+
+
+def _known_team_terms() -> set[str]:
+    terms = set(TEAM_ALIASES.keys())
+    for aliases in TEAM_ALIASES.values():
+        terms.update(aliases)
+    for first, second in FIXTURE_ALIASES.values():
+        terms.add(_normalize_text(first))
+        terms.add(_normalize_text(second))
+    return terms
+
+
+def _is_known_team_term(value: str) -> bool:
+    normalized = _normalize_text(value)
+    return normalized in _known_team_terms()
+
+
+def _team_terms(value: str) -> List[str]:
+    clean = _normalize_text(value)
+    if not clean:
+        return []
+    terms = [clean, *TEAM_ALIASES.get(clean, [])]
+    seen: set[str] = set()
+    unique_terms: List[str] = []
+    for term in terms:
+        normalized = _normalize_text(term)
+        if normalized and normalized not in seen:
+            unique_terms.append(normalized)
+            seen.add(normalized)
+    return unique_terms
+
+
+def _team_matches(team_name: str, terms: List[str]) -> bool:
+    haystack = _normalize_text(team_name)
     return any(term in haystack for term in terms)
 
 

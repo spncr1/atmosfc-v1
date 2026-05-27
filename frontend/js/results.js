@@ -108,7 +108,7 @@ function matchCard(match) {
       </span>
       <span class="match-row-main">
         <strong class="match-team match-team-home">${teamCrest(match.home_crest, match.home)}<span>${match.home}</span></strong>
-        <b>${match.score}</b>
+        <b>${match.score || ""}</b>
         <strong class="match-team match-team-away"><span>${match.away}</span>${teamCrest(match.away_crest, match.away)}</strong>
       </span>
       <span class="match-row-footer">

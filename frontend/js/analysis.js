@@ -60,7 +60,7 @@ function renderMatchHeader(match) {
   awayShortEl.textContent = match.away;
   homeFullEl.textContent = `${match.home_short_name || shortTeamName(match.home)} (H)`;
   awayFullEl.textContent = `${match.away_short_name || shortTeamName(match.away)} (A)`;
-  scoreEl.textContent = (match.score || "0 - 0").replace(" - ", " - ");
+  scoreEl.textContent = match.score ? match.score.replace(" - ", " - ") : "";
   if (match.half_time_score) {
     halfTimeEl.textContent = `HT ${match.half_time_score.replace(" - ", " - ")}`;
     halfTimeEl.hidden = false;
