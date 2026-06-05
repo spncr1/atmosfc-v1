@@ -65,12 +65,26 @@ function matchCard(match) {
       <span class="match-card__meta">${match.competition} - ${formatDate(match.date)}</span>
       <span class="match-card__teams">
         <span class="match-card__team">${teamCrest(match.home_crest, match.home)}${displayTeamName(match, "home")}</span>
-        <strong>${match.score || ""}</strong>
+        <strong>${displayScore(match)}</strong>
         <span class="match-card__team">${displayTeamName(match, "away")}${teamCrest(match.away_crest, match.away)}</span>
       </span>
+      ${scoreContextMarkup(match)}
       <span class="match-card__round">${match.round || match.season || ""}</span>
     </button>
   `;
+}
+
+function displayScore(match) {
+  return [match.score, match.score_note].filter(Boolean).join(" ");
+}
+
+function scoreDetail(match) {
+  return [match.penalty_score, match.aggregate_score].filter(Boolean).join(" · ");
+}
+
+function scoreContextMarkup(match) {
+  const detail = scoreDetail(match);
+  return detail ? `<span class="match-card__score-context">${detail}</span>` : "";
 }
 
 function displayTeamName(match, side) {

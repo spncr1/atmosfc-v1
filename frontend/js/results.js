@@ -109,15 +109,29 @@ function matchCard(match) {
       </span>
       <span class="match-row-main">
         <strong class="match-team match-team-home">${teamCrest(match.home_crest, match.home)}<span>${displayTeamName(match, "home")}</span></strong>
-        <b>${match.score || ""}</b>
+        <b>${displayScore(match)}</b>
         <strong class="match-team match-team-away"><span>${displayTeamName(match, "away")}</span>${teamCrest(match.away_crest, match.away)}</strong>
       </span>
+      ${scoreContextMarkup(match)}
       <span class="match-row-footer">
         <small>YouTube comments</small>
         <i>Analyse</i>
       </span>
     </button>
   `;
+}
+
+function displayScore(match) {
+  return [match.score, match.score_note].filter(Boolean).join(" ");
+}
+
+function scoreDetail(match) {
+  return [match.penalty_score, match.aggregate_score].filter(Boolean).join(" · ");
+}
+
+function scoreContextMarkup(match) {
+  const detail = scoreDetail(match);
+  return detail ? `<span class="match-row-score-context">${detail}</span>` : "";
 }
 
 function stageWithSeason(match) {

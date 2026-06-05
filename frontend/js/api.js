@@ -1,18 +1,20 @@
 const API_BASE = resolveApiBase();
 
 function resolveApiBase() {
-  const configured =
-    window.ATMOS_API_BASE ||
-    window.ATMOS_CONFIG?.API_BASE ||
-    localStorage.getItem("ATMOS_API_BASE") ||
-    "";
+  const override = window.ATMOS_API_BASE || "";
 
-  if (configured) {
-    return configured.replace(/\/$/, "");
+  if (override) {
+    return override.replace(/\/$/, "");
   }
 
   if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
     return "http://localhost:8000";
+  }
+
+  const configured = localStorage.getItem("ATMOS_API_BASE") || window.ATMOS_CONFIG?.API_BASE || "";
+
+  if (configured) {
+    return configured.replace(/\/$/, "");
   }
 
   return "";

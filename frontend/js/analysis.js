@@ -60,14 +60,27 @@ function renderMatchHeader(match) {
   awayShortEl.textContent = displayTeamName(match, "away");
   homeFullEl.textContent = `${match.home} (H)`;
   awayFullEl.textContent = `${match.away} (A)`;
-  scoreEl.textContent = match.score ? match.score.replace(" - ", " - ") : "";
-  if (match.half_time_score) {
-    halfTimeEl.textContent = `HT ${match.half_time_score.replace(" - ", " - ")}`;
+  scoreEl.textContent = displayScore(match);
+  const scoreContext = scoreContextLines(match);
+  if (scoreContext.length) {
+    halfTimeEl.innerHTML = scoreContext.map((line) => `<span>${escapeHtml(line)}</span>`).join("");
     halfTimeEl.hidden = false;
   } else {
-    halfTimeEl.textContent = "";
+    halfTimeEl.innerHTML = "";
     halfTimeEl.hidden = true;
   }
+}
+
+function displayScore(match) {
+  return [match.score, match.score_note].filter(Boolean).join(" ");
+}
+
+function scoreContextLines(match) {
+  return [
+    match.half_time_score ? `HT ${match.half_time_score.replace(" - ", " - ")}` : "",
+    match.penalty_score,
+    match.aggregate_score,
+  ].filter(Boolean);
 }
 
 function stageWithSeason(match) {

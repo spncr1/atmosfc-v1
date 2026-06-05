@@ -144,6 +144,16 @@
   line-height: 1;
 }
 
+.analysis-score-context {
+  display: grid;
+  gap: 4px;
+}
+
+.analysis-score-context span {
+  color: var(--negative-muted);
+  font-size: 0.78rem;
+}
+
 .analysis-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

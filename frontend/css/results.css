@@ -253,6 +253,15 @@
   white-space: nowrap;
 }
 
+.match-row-score-context {
+  justify-self: center;
+  width: min(820px, 100%);
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-align: center;
+}
+
 .match-row-footer {
   grid-template-columns: auto 1fr;
   gap: 16px;

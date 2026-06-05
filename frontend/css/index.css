@@ -195,6 +195,13 @@
   font-style: normal;
 }
 
+.match-card__score-context {
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .match-card__teams {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);

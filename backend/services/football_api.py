@@ -248,6 +248,14 @@ class SearchIntent:
     strict_team: bool = False
 
 
+@dataclass(frozen=True)
+class ScoreContext:
+    score: Optional[str]
+    score_note: Optional[str]
+    penalty_score: Optional[str]
+    display_pair: Optional[tuple[int, int]]
+
+
 class FootballDataError(RuntimeError):
     # Raised when Football-Data.org cannot satisfy a request.
     pass
@@ -313,8 +321,10 @@ async def search_matches(
             except FootballDataError as exc:
                 errors.append(str(exc))
                 continue
-            for raw in data.get("matches", []):
-                summary = parse_match(raw)
+            raw_matches = data.get("matches", [])
+            summaries = [parse_match(raw) for raw in raw_matches]
+            _apply_aggregate_scores(summaries, raw_matches)
+            for summary in summaries:
                 if summary.status != "FINISHED":
                     continue
                 if search_intent.terms and not _matches_search(summary, search_intent):
@@ -346,7 +356,7 @@ async def _recent_window_matches(limit: int) -> List[MatchSummary]:
     # Keep the all-competition homepage feed genuinely fresh.
 
     today = datetime.now(timezone.utc).date()
-    matches: List[MatchSummary] = []
+    raw_matches: List[Dict[str, Any]] = []
     errors: List[str] = []
     for code in SUPPORTED_COMPETITIONS:
         params = {
@@ -362,10 +372,16 @@ async def _recent_window_matches(limit: int) -> List[MatchSummary]:
         except FootballDataError as exc:
             errors.append(str(exc))
             continue
-        matches.extend(parse_match(raw) for raw in data.get("matches", []))
-    if not matches and errors:
+        raw_matches.extend(data.get("matches", []))
+
+    matches = [parse_match(raw) for raw in raw_matches]
+    _apply_aggregate_scores(matches, raw_matches)
+    sorted_matches = sorted(matches, key=lambda match: match.date, reverse=True)
+    if len(sorted_matches) < limit:
+        sorted_matches = await _backfill_recent_matches(sorted_matches, limit)
+    if not sorted_matches and errors:
         raise FootballDataError(errors[0])
-    return sorted(matches, key=lambda match: match.date, reverse=True)[:limit]
+    return sorted_matches[:limit]
 
 
 async def _recent_competition_matches(code: str, limit: int) -> List[MatchSummary]:
@@ -381,11 +397,33 @@ async def _recent_competition_matches(code: str, limit: int) -> List[MatchSummar
             )
         except FootballDataError as exc:
             raise FootballDataError(f"{SUPPORTED_COMPETITIONS[code]} could not be loaded: {exc}") from exc
-        matches = [parse_match(raw) for raw in data.get("matches", [])]
+        raw_matches = data.get("matches", [])
+        matches = [parse_match(raw) for raw in raw_matches]
+        _apply_aggregate_scores(matches, raw_matches)
         if matches:
             return sorted(matches, key=lambda match: match.date, reverse=True)[:limit]
 
     return []
+
+
+async def _backfill_recent_matches(existing: List[MatchSummary], limit: int) -> List[MatchSummary]:
+    # Fill quiet off-season homepage windows with latest finished matches per competition.
+
+    seen = {match.id for match in existing}
+    backfill: List[MatchSummary] = list(existing)
+    for code in SUPPORTED_COMPETITIONS:
+        try:
+            matches = await _recent_competition_matches(code, limit)
+        except FootballDataError:
+            continue
+        for match in matches:
+            if match.id in seen:
+                continue
+            seen.add(match.id)
+            backfill.append(match)
+            if len(backfill) >= limit:
+                return sorted(backfill, key=lambda item: item.date, reverse=True)
+    return sorted(backfill, key=lambda item: item.date, reverse=True)
 
 
 async def get_match(match_id: str) -> Dict[str, Any]:
@@ -426,13 +464,10 @@ def parse_match(
 ) -> MatchSummary:
     # Convert a Football-Data.org match object into an Atmos match summary.
 
-    score = raw.get("score", {}).get("fullTime", {})
+    score_context = _match_score_context(raw)
     half_time = raw.get("score", {}).get("halfTime", {})
-    home_score = score.get("home")
-    away_score = score.get("away")
     half_home = half_time.get("home")
     half_away = half_time.get("away")
-    display_score = None if home_score is None or away_score is None else f"{home_score}-{away_score}"
     half_time_score = None if half_home is None or half_away is None else f"{half_home}-{half_away}"
     competition = raw.get("competition", {})
     competition_code = competition.get("code", "")
@@ -454,7 +489,9 @@ def parse_match(
         away_tla=_team_tla(away_team, away_team_detail),
         home_crest=home_team.get("crest") or _team_detail_value(home_team_detail, "crest"),
         away_crest=away_team.get("crest") or _team_detail_value(away_team_detail, "crest"),
-        score=display_score,
+        score=score_context.score,
+        score_note=score_context.score_note,
+        penalty_score=score_context.penalty_score,
         half_time_score=half_time_score,
         competition=SUPPORTED_COMPETITIONS.get(competition_code, competition.get("name", "Competition")),
         competition_code=competition_code,
@@ -464,6 +501,178 @@ def parse_match(
         season=_format_season(season.get("startDate")),
         status=raw.get("status"),
     )
+
+
+async def enrich_match_context(match: MatchSummary, raw: Dict[str, Any]) -> MatchSummary:
+    # Add context that needs a wider competition feed, such as two-leg aggregate scores.
+
+    if not _is_second_leg(match):
+        return match
+    season_year = _season_start_year(raw.get("season", {}).get("startDate"))
+    if not season_year or not match.competition_code:
+        return match
+    try:
+        data = await _request_json(
+            f"/competitions/{match.competition_code}/matches",
+            {"season": season_year, "status": "FINISHED"},
+        )
+    except FootballDataError:
+        return match
+    raw_matches = data.get("matches", [])
+    summaries = [parse_match(item) for item in raw_matches]
+    _apply_aggregate_scores(summaries, raw_matches)
+    enriched = next((item for item in summaries if item.id == match.id), None)
+    if enriched and enriched.aggregate_score:
+        match.aggregate_score = enriched.aggregate_score
+    return match
+
+
+def score_margin(raw: Dict[str, Any]) -> int:
+    # Return the margin from the displayed match score, excluding penalty shootout totals.
+
+    score_context = _match_score_context(raw)
+    if score_context.display_pair is None:
+        return 0
+    home_score, away_score = score_context.display_pair
+    return abs(home_score - away_score)
+
+
+def _match_score_context(raw: Dict[str, Any]) -> ScoreContext:
+    score_data = raw.get("score", {}) or {}
+    duration = str(score_data.get("duration", "")).upper()
+    full_time = _score_pair(score_data.get("fullTime"))
+    regular_time = _score_pair(score_data.get("regularTime"))
+    extra_time = _score_pair(score_data.get("extraTime"))
+    penalties = _score_pair(score_data.get("penalties"))
+    after_extra_time = _add_score_pairs(regular_time, extra_time)
+
+    if penalties:
+        display_pair = after_extra_time or regular_time or _subtract_score_pair(full_time, penalties) or full_time
+        return ScoreContext(
+            score=_score_label(display_pair),
+            score_note="AET" if display_pair else None,
+            penalty_score=_penalty_score_label(raw, penalties),
+            display_pair=display_pair,
+        )
+
+    display_pair = after_extra_time or full_time
+    score_note = "AET" if display_pair and duration == "EXTRA_TIME" else None
+    return ScoreContext(
+        score=_score_label(display_pair),
+        score_note=score_note,
+        penalty_score=None,
+        display_pair=display_pair,
+    )
+
+
+def _score_pair(raw_score: Any) -> Optional[tuple[int, int]]:
+    if not isinstance(raw_score, dict):
+        return None
+    home = raw_score.get("home")
+    away = raw_score.get("away")
+    if home is None or away is None:
+        return None
+    return (int(home), int(away))
+
+
+def _subtract_score_pair(
+    total: Optional[tuple[int, int]],
+    deduction: Optional[tuple[int, int]],
+) -> Optional[tuple[int, int]]:
+    if total is None or deduction is None:
+        return None
+    home = total[0] - deduction[0]
+    away = total[1] - deduction[1]
+    if home < 0 or away < 0:
+        return None
+    return (home, away)
+
+
+def _add_score_pairs(
+    first: Optional[tuple[int, int]],
+    second: Optional[tuple[int, int]],
+) -> Optional[tuple[int, int]]:
+    if first is None or second is None:
+        return None
+    return (first[0] + second[0], first[1] + second[1])
+
+
+def _score_label(score: Optional[tuple[int, int]]) -> Optional[str]:
+    if score is None:
+        return None
+    return f"{score[0]}-{score[1]}"
+
+
+def _penalty_score_label(raw: Dict[str, Any], penalties: tuple[int, int]) -> str:
+    winner = "homeTeam" if penalties[0] > penalties[1] else "awayTeam"
+    team_name = _score_team_label(raw.get(winner, {}))
+    return f"{team_name} won {_score_label(penalties)} on penalties"
+
+
+def _apply_aggregate_scores(summaries: List[MatchSummary], raw_matches: List[Dict[str, Any]]) -> None:
+    raw_by_id = {str(raw.get("id", "")): raw for raw in raw_matches}
+    first_legs = [match for match in summaries if _is_first_leg(match)]
+    for match in summaries:
+        if not _is_second_leg(match):
+            continue
+        first_leg = next((candidate for candidate in first_legs if _same_two_leg_tie(match, candidate)), None)
+        if first_leg is None:
+            continue
+        second_pair = _match_score_context(raw_by_id.get(match.id, {})).display_pair
+        first_pair = _match_score_context(raw_by_id.get(first_leg.id, {})).display_pair
+        if second_pair is None or first_pair is None:
+            continue
+        if _same_team(match, "home", first_leg, "home"):
+            home_total = second_pair[0] + first_pair[0]
+            away_total = second_pair[1] + first_pair[1]
+        else:
+            home_total = second_pair[0] + first_pair[1]
+            away_total = second_pair[1] + first_pair[0]
+        match.aggregate_score = (
+            f"Aggregate: {_summary_team_label(match, 'home')} "
+            f"{home_total}-{away_total} {_summary_team_label(match, 'away')}"
+        )
+
+
+def _is_first_leg(match: MatchSummary) -> bool:
+    return "1st leg" in str(match.round or "").lower()
+
+
+def _is_second_leg(match: MatchSummary) -> bool:
+    return "2nd leg" in str(match.round or "").lower()
+
+
+def _same_two_leg_tie(match: MatchSummary, candidate: MatchSummary) -> bool:
+    if match.id == candidate.id:
+        return False
+    return (
+        match.competition_code == candidate.competition_code
+        and match.season == candidate.season
+        and (
+            (_same_team(match, "home", candidate, "home") and _same_team(match, "away", candidate, "away"))
+            or (_same_team(match, "home", candidate, "away") and _same_team(match, "away", candidate, "home"))
+        )
+    )
+
+
+def _same_team(first: MatchSummary, first_side: str, second: MatchSummary, second_side: str) -> bool:
+    first_id = getattr(first, f"{first_side}_team_id")
+    second_id = getattr(second, f"{second_side}_team_id")
+    if first_id is not None and second_id is not None:
+        return first_id == second_id
+    return _normalize_text(getattr(first, first_side, "")) == _normalize_text(getattr(second, second_side, ""))
+
+
+def _summary_team_label(match: MatchSummary, side: str) -> str:
+    return (
+        getattr(match, f"{side}_tla")
+        or getattr(match, f"{side}_short_name")
+        or _clean_team_name(getattr(match, side))
+    )
+
+
+def _score_team_label(team: Dict[str, Any]) -> str:
+    return team.get("tla") or team.get("shortName") or _clean_team_name(team.get("name", "Team"))
 
 
 def parse_events(raw: Dict[str, Any]) -> List[MatchEvent]:

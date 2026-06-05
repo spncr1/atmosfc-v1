@@ -20,6 +20,9 @@ class MatchSummary(BaseModel):
     home_crest: Optional[str] = None
     away_crest: Optional[str] = None
     score: Optional[str] = None
+    score_note: Optional[str] = None
+    penalty_score: Optional[str] = None
+    aggregate_score: Optional[str] = None
     half_time_score: Optional[str] = None
     competition: str
     competition_code: str
