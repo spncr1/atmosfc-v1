@@ -1,0 +1,385 @@
+/* HOMEPAGE */
+
+.home-page .hero-top {
+  display: grid;
+  grid-template-columns: minmax(0, 430px) minmax(0, 500px);
+  gap: 24px;
+  align-items: start;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  margin-top: 30px;
+  padding: 8px 18px;
+}
+
+.home-page .hero-copy {
+  width: auto;
+  margin-left: 110px;
+}
+
+.home-page .hero-logo {
+  justify-self: end;
+  width: min(500px, 100%);
+}
+
+/* SECTION HEADINGS */
+.section-heading {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: -14px;
+}
+
+.section-head {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+/* SEARCH INPUT + CTA */
+.match-search-layout {
+  width: min(800px, 100%);
+  margin: 24px auto 0;
+  margin-top: 12px;
+  padding: 8px 18px;
+}
+
+.search-section {
+  margin-top: 12px;
+  padding: 18px;
+}
+
+.recent-section {
+  margin-top: -20px;
+  padding: 0 18px 18px;
+}
+
+/* FILTER LABELS */
+.search-field {
+  display: block;
+  margin: 0 0 22px;
+  color: var(--ink);
+  font-size: 1.08rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* FILTER TABS */
+.filter-section {
+  margin: 20px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 16px;
+}
+
+.filter-option {
+  display: block;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.filter-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.filter-option span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 50px;
+  min-height: 40px;
+  padding: 0 24px;
+  color: var(--muted);
+  background: #141414;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.filter-emblem {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.filter-option input:checked + span {
+  color: var(--accent);
+  border-color: var(--accent);
+  
+}
+
+.filter-option input:disabled + span {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.filter-option.is-unavailable span::after {
+  content: "Unavailable";
+  margin-left: 8px;
+  color: var(--negative-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  
+}
+
+.filter-option input:focus-visible + span,
+.filter-option:not(.is-unavailable) span:hover {
+  border-color: var(--accent);
+  background-color: var(--accent-darkest);
+  box-shadow: 0 0 0 3px var(--accent);
+  transition: transform 0.3s ease, filter 0.3s ease;
+  transform: scale(1.05);
+}
+
+
+/* RECENT MATCHES */
+.match-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(300px, 1fr));
+  gap: 18px;
+  width: min(1000px, calc(100vw - 48px));
+  margin-inline: 50%;
+  transform: translateX(-50%);
+  padding-bottom: 64px;
+}
+
+.match-card {
+  display: grid;
+  gap: 10px;
+  min-height: 132px;
+  padding: 16px;
+  text-align: left;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  cursor: pointer;
+}
+
+.match-card {
+  align-content: space-between;
+  padding: 16px 22px;
+}
+
+.match-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.match-card__meta,
+.match-card__round {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-style: normal;
+}
+
+.match-card__teams {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.match-card__teams > strong {
+  min-width: 54px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.match-card__team {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.match-card__team:first-child {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.match-card__team:last-child {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.match-card__team {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* RESPONSIVE DESIGN 
+- use cmd + shift + M to view mobile view on laptop during testing 
+*/
+
+/* ### DESKTOPS ### */
+@media (max-width: 1440px) {
+
+}
+
+/* ### TABLETS ### */
+@media (max-width: 1024px) {
+
+}
+
+/* ### PHONES ### */
+@media (max-width: 600px) {
+  /* Mobile hero spacing */
+  .home-page .hero {
+    padding: 16px 0 10px;
+  }
+
+  /* Mobile hero layout */
+  .home-page .hero-top {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 0;
+  }
+
+  /* Mobile hero copy alignment */
+  .home-page .hero-copy {
+    margin-left: 0;
+  }
+
+  /* Mobile hero headline */
+  .home-page .hero h2 {
+    margin-top: 12px;
+  }
+
+  .home-page .hero h2 span {
+    display: block;
+  }
+
+  /* Mobile hero description */
+  .home-page .hero p {
+    margin-top: 14px;
+  }
+
+  /* Mobile hero logo */
+  .home-page .hero-logo {
+    justify-self: start;
+    width: min(100%, 18rem);
+  }
+
+  /* Mobile search section spacing */
+  .home-page .search-section {
+    padding-top: 10px;
+  }
+
+  /* Mobile search label */
+  .home-page .section-heading {
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  /* Mobile search layout */
+  .home-page .search-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  /* Mobile search controls */
+  .home-page .search-input,
+  .home-page .search-bar .primary-button {
+    box-sizing: border-box;
+    min-height: 40px;
+    border-radius: 10px;
+  }
+
+  /* Mobile search input */
+  .home-page .search-input {
+    padding: 0 12px;
+    font-size: 0.82rem;
+  }
+
+  /* Mobile search button */
+  .home-page .search-bar .primary-button {
+    width: auto;
+    padding: 0 14px;
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+
+  /* Mobile filter headings */
+  .home-page .search-field {
+    margin-bottom: 18px;
+    font-size: 0.9rem;
+  }
+
+  /* Mobile filter spacing */
+  .home-page .filter-tabs {
+    gap: 10px 12px;
+  }
+
+  /* Mobile filter labels */
+  .home-page .filter-option {
+    font-size: 0.92rem;
+  }
+
+  /* Mobile filter pills */
+  .home-page .filter-option span {
+    box-sizing: border-box;
+    min-height: 36px;
+    padding: 0 18px;
+  }
+
+  /* Mobile competition pills */
+  .home-page .filter-section:first-of-type .filter-option span {
+    width: 7.75rem;
+    padding: 0 12px;
+  }
+
+  /* Mobile season grid */
+  .home-page .filter-section:nth-of-type(2) .filter-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* Mobile season pills */
+  .home-page .filter-section:nth-of-type(2) .filter-option span {
+    width: 100%;
+  }
+
+  /* Mobile filter emblems */
+  .home-page .filter-emblem {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Mobile unavailable label */
+  .home-page .filter-option.is-unavailable span::after {
+    margin-left: 6px;
+    font-size: 0.55rem;
+  }
+
+  /* Mobile recent matches spacing */
+  .home-page .recent-section {
+    margin-top: 12px;
+  }
+}

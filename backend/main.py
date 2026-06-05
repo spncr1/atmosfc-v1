@@ -34,6 +34,13 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/debug/config")
+async def debug_config() -> dict[str, list[str]]:
+    # Return non-secret runtime config useful for deployment checks.
+
+    return {"allowed_origins": settings.allowed_origins}
+
+
 @app.get("/matches/recent")
 async def get_recent_matches(
     competition: str | None = None,

@@ -26,7 +26,12 @@ class Settings(BaseSettings):
     def allowed_origins(self) -> List[str]:
         # Return configured CORS origins as a list.
 
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        origins = []
+        for origin in self.cors_origins.split(","):
+            clean = origin.strip().rstrip("/")
+            if clean:
+                origins.append(clean)
+        return origins
 
 
 @lru_cache
