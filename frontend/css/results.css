@@ -332,3 +332,235 @@
   border-color: var(--line);
   cursor: not-allowed;
 }
+
+/* RESPONSIVE DESIGN 
+- use cmd + shift + M to view mobile view on laptop during testing 
+*/
+
+/* ### DESKTOPS ### */
+@media (max-width: 1440px) {
+
+}
+
+/* ### TABLETS ### */
+@media (max-width: 1024px) {
+  /* Split-screen filter container */
+  .results-page .filter-panel {
+    box-sizing: border-box;
+    width: min(100%, 54rem);
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  /* Split-screen filter layout */
+  .results-page .filter-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    width: 100%;
+  }
+
+  /* Split-screen apply button */
+  .results-page .filter-panel .primary-button {
+    width: 8.75rem;
+    padding: 0 20px;
+    white-space: nowrap;
+  }
+
+}
+
+/* ### PHONES ### */
+@media (max-width: 600px) {
+  /* Mobile back link */
+  .results-page .brand {
+    font-size: 0.95rem;
+  }
+
+  /* Mobile hero spacing */
+  .results-page .hero {
+    padding: 16px 0 10px;
+  }
+
+  /* Mobile hero layout */
+  .results-page .hero-top {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    width: min(100%, 31rem);
+    margin-top: 0;
+    margin-right: auto;
+    margin-left: auto;
+    box-sizing: border-box;
+  }
+
+  /* Mobile hero copy alignment */
+  .results-page .hero-copy {
+    margin-left: 0;
+  }
+
+  /* Mobile hero headline */
+  .results-page .hero h2 {
+    margin-top: 12px;
+  }
+
+  /* Mobile hero description */
+  .results-page .hero p {
+    margin-top: 14px;
+  }
+
+  /* Mobile hero logo */
+  .results-page .hero-logo {
+    justify-self: start;
+    width: min(100%, 18rem);
+  }
+
+  /* Mobile filter panel spacing */
+  .results-page .filter-panel {
+    width: min(100%, 31rem);
+    margin-right: auto;
+    margin-left: auto;
+    padding: 10px 0 18px;
+    gap: 14px;
+    box-sizing: border-box;
+  }
+
+  /* Mobile search layout */
+  .results-page .search-bar--compact {
+    width: 100%;
+  }
+
+  /* Mobile filter layout */
+  .results-page .filter-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    width: 100%;
+  }
+
+  /* Mobile filter labels */
+  .results-page .filter-panel label {
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  /* Mobile filter controls */
+  .results-page .search-input,
+  .results-page .filter-panel select,
+  .results-page .filter-panel .primary-button {
+    box-sizing: border-box;
+    min-height: 40px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+  }
+
+  /* Mobile filter input/select padding */
+  .results-page .search-input,
+  .results-page .filter-panel select {
+    padding: 0 12px;
+  }
+
+  /* Mobile apply button */
+  .results-page .filter-panel .primary-button {
+    justify-self: end;
+    width: 8.75rem;
+    padding: 0 14px;
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+
+  /* Mobile results spacing */
+  .results-page .results-summary {
+    width: min(100%, 31rem);
+    margin-top: 28px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  /* Mobile match list alignment */
+  .results-page .match-list,
+  .results-page .pagination {
+    width: min(100%, 31rem);
+    margin-right: auto;
+    margin-left: auto;
+  }
+}
+
+/* ### SMALL PHONES ### */
+@media (max-width: 430px) {
+  /* Small-phone back link */
+  .results-page .brand {
+    font-size: 0.9rem;
+  }
+
+  /* Small-phone hero logo */
+  .results-page .hero-logo {
+    width: min(100%, 16rem);
+  }
+
+  /* Small-phone filter panel */
+  .results-page .filter-panel {
+    gap: 12px;
+  }
+
+  /* Small-phone filter layout */
+  .results-page .filter-row {
+    gap: 10px;
+  }
+
+  /* Small-phone filter labels */
+  .results-page .filter-panel label {
+    font-size: 0.66rem;
+  }
+
+  /* Small-phone filter controls */
+  .results-page .search-input,
+  .results-page .filter-panel select,
+  .results-page .filter-panel .primary-button {
+    min-height: 38px;
+    font-size: 0.76rem;
+  }
+
+  /* Small-phone apply button */
+  .results-page .filter-panel .primary-button {
+    width: 8rem;
+    font-size: 0.82rem;
+  }
+
+  /* Small-phone results summary */
+  .results-page .results-summary__text {
+    font-size: 0.9rem;
+  }
+
+  /* Small-phone match cards */
+  .results-page .match-row {
+    padding: 14px;
+  }
+
+  /* Small-phone match metadata */
+  .results-page .match-row-meta {
+    gap: 7px;
+  }
+
+  .results-page .match-row-meta em,
+  .results-page .match-row-stage {
+    padding: 5px 12px;
+    font-size: 0.78rem;
+  }
+
+  /* Small-phone match score row */
+  .results-page .match-row-main {
+    grid-template-columns: minmax(0, 1fr) minmax(64px, auto) minmax(0, 1fr);
+    column-gap: 8px;
+  }
+
+  .results-page .match-row-main strong {
+    font-size: 1.05rem;
+  }
+
+  .results-page .match-row-main b {
+    min-width: 64px;
+    font-size: 1.35rem;
+  }
+
+  /* Small-phone match footer */
+  .results-page .match-row-footer i {
+    padding: 9px 18px;
+    font-size: 0.84rem;
+  }
+}

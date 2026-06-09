@@ -364,3 +364,334 @@
   color: var(--negative-muted);
   font-size: 0.85rem;
 }
+
+/* RESPONSIVE DESIGN 
+- use cmd + shift + M to view mobile view on laptop during testing 
+*/
+
+/* ### DESKTOPS ### */
+@media (max-width: 1440px) {
+
+}
+
+/* ### TABLETS ### */
+@media (max-width: 1024px) {
+  /* Split-screen content alignment */
+  .analysis-content {
+    width: min(54rem, calc(100% - 32px));
+    max-width: 100%;
+  }
+
+  /* Split-screen metrics grid */
+  .analysis-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Split-screen shrinkable cards */
+  .analysis-match-card,
+  .analysis-card,
+  .analysis-metric,
+  .analysis-chart-wrap,
+  .analysis-two-column {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+  }
+}
+
+/* ### SPLIT SCREEN ### */
+@media (max-width: 900px) {
+  /* Split-screen page alignment */
+  .analysis-nav,
+  .analysis-content {
+    width: min(100%, calc(100% - 32px));
+  }
+
+  /* Split-screen scoreboard compression */
+  .analysis-scoreboard {
+    grid-template-columns: 48px minmax(0, 1fr) 112px minmax(0, 1fr) 48px;
+    gap: 12px;
+  }
+
+  /* Split-screen crests */
+  .analysis-crest {
+    width: 48px;
+    height: 48px;
+  }
+
+  /* Split-screen team text */
+  .analysis-team {
+    min-width: 0;
+  }
+
+  .analysis-team strong {
+    overflow: hidden;
+    font-size: 1.15rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Split-screen score */
+  .analysis-score {
+    min-width: 0;
+  }
+
+  .analysis-score strong {
+    font-size: 1.9rem;
+  }
+
+  /* Split-screen metric cards */
+  .analysis-metric {
+    min-width: 0;
+  }
+
+  /* Split-screen chart containment */
+  .analysis-chart-wrap {
+    overflow: hidden;
+  }
+
+  .analysis-chart-wrap canvas {
+    max-width: 100%;
+  }
+
+  /* Split-screen lower cards */
+  .analysis-two-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ### PHONES ### */
+@media (max-width: 600px) {
+  /* Mobile nav spacing */
+  .analysis-nav {
+    width: min(31rem, calc(100% - 40px));
+    min-height: 72px;
+  }
+
+  /* Mobile back link */
+  .analysis-nav .brand {
+    font-size: 0.95rem;
+  }
+
+  /* Mobile nav logo */
+  .analysis-nav-logo {
+    width: 108px;
+  }
+
+  /* Mobile content alignment */
+  .analysis-content {
+    width: min(31rem, calc(100% - 40px));
+    gap: 14px;
+    padding-bottom: 44px;
+  }
+
+  /* Mobile status */
+  .analysis-status {
+    padding: 14px;
+    border-radius: 12px;
+    font-size: 0.82rem;
+  }
+
+  /* Mobile match card */
+  .analysis-match-card {
+    gap: 18px;
+    padding: 16px;
+    border-radius: 10px;
+  }
+
+  /* Mobile match metadata */
+  .analysis-match-meta {
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.72rem;
+  }
+
+  /* Mobile match pills */
+  .analysis-pill {
+    min-height: 22px;
+    padding: 0 10px;
+    font-size: 0.68rem;
+  }
+
+  /* Mobile scoreboard layout */
+  .analysis-scoreboard {
+    grid-template-columns: 38px minmax(0, 1fr) 76px minmax(0, 1fr) 38px;
+    gap: 8px;
+  }
+
+  /* Mobile crests */
+  .analysis-crest {
+    width: 38px;
+    height: 38px;
+  }
+
+  /* Mobile team names */
+  .analysis-team {
+    min-width: 0;
+    gap: 4px;
+  }
+
+  .analysis-team strong {
+    overflow: hidden;
+    font-size: 1rem;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .analysis-team span,
+  .analysis-score span,
+  .analysis-score-context span {
+    font-size: 0.68rem;
+  }
+
+  /* Mobile score */
+  .analysis-score strong {
+    font-size: 1.45rem;
+  }
+
+  /* Mobile metric grid */
+  .analysis-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  /* Mobile metric cards */
+  .analysis-metric {
+    min-height: 0;
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  .analysis-metric span,
+  .analysis-card-label {
+    font-size: 0.64rem;
+    line-height: 1.25;
+  }
+
+  .analysis-metric strong {
+    margin-top: 7px;
+    font-size: 1.18rem;
+  }
+
+  .analysis-metric small {
+    margin-top: 5px;
+    font-size: 0.7rem;
+  }
+
+  /* Mobile chart card */
+  .analysis-card {
+    padding: 16px;
+    border-radius: 10px;
+  }
+
+  .analysis-chart-wrap {
+    height: 300px;
+    margin-top: 14px;
+  }
+
+  /* Mobile chart legend */
+  .analysis-chart-legend {
+    gap: 10px 14px;
+    margin-top: 14px;
+    font-size: 0.68rem;
+  }
+
+  /* Mobile lower cards */
+  .analysis-two-column {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  /* Mobile event list */
+  .analysis-event-list li {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 8px;
+    padding: 9px 0;
+  }
+
+  .analysis-event-list span {
+    font-size: 0.8rem;
+  }
+
+  .event-pill {
+    justify-self: start;
+    grid-column: 2;
+    padding: 3px 8px;
+    font-size: 0.66rem;
+  }
+
+  /* Mobile comments */
+  .analysis-comment {
+    gap: 7px;
+    padding: 10px 0;
+  }
+
+  .analysis-comment p {
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+
+  .analysis-comment span,
+  .analysis-comment a {
+    font-size: 0.72rem;
+  }
+
+  .analysis-comment small {
+    font-size: 0.68rem;
+  }
+}
+
+/* ### SMALL PHONES ### */
+@media (max-width: 430px) {
+  /* Small-phone match card */
+  .analysis-match-card {
+    padding: 14px;
+  }
+
+  /* Small-phone scoreboard */
+  .analysis-scoreboard {
+    grid-template-columns: 32px minmax(0, 1fr) 60px minmax(0, 1fr) 32px;
+    gap: 6px;
+  }
+
+  /* Small-phone crests */
+  .analysis-crest {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Small-phone team names */
+  .analysis-team strong {
+    font-size: 0.92rem;
+  }
+
+  .analysis-team span,
+  .analysis-score span,
+  .analysis-score-context span {
+    font-size: 0.62rem;
+  }
+
+  /* Small-phone score */
+  .analysis-score strong {
+    font-size: 1.28rem;
+  }
+
+  /* Small-phone metrics */
+  .analysis-metric {
+    padding: 10px;
+  }
+
+  .analysis-metric strong {
+    font-size: 1rem;
+  }
+
+  .analysis-metric small {
+    font-size: 0.66rem;
+  }
+
+  /* Small-phone chart */
+  .analysis-chart-wrap {
+    height: 280px;
+  }
+}
