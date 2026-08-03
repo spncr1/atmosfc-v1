@@ -44,7 +44,7 @@ Atmos FC is built to make that post-match catch-up easier for the average fan by
 
 ## Tech Stack
 
-- Backend: Python, FastAPI, Football-Data.org, YouTube Data API, VADER
+- Backend: Python, FastAPI, API-Football, Neon Postgres, Football-Data.org, YouTube Data API, VADER
 - Frontend: vanilla HTML, CSS, JavaScript, Chart.js
 - Backend deployment: Railway
 - Frontend deployment: Vercel
@@ -76,6 +76,9 @@ Create `backend/.env` with the API keys required by the FastAPI service:
 
 ```bash
 FOOTBALL_DATA_API_KEY=your_football_data_api_key_goes_here
+API_FOOTBALL_KEY=your_api_football_key_goes_here
+DATABASE_URL=your_neon_pooled_connection_string
+DIRECT_DATABASE_URL=your_neon_direct_connection_string
 YOUTUBE_API_KEY=your_youtube_api_key_goes_here
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
@@ -88,9 +91,19 @@ npm run dev
 
 Then open the local frontend URL shown in the terminal.
 
-## Limitations
+## Deployment
 
-- YouTube comment volume varies by match prominence, so Champions League and Premier League matches will usually have more usable data than lower-profile fixtures
-- Sentiment analysis reflects the online post-match reaction rather than the live mood inside the stadium
-- The current social media data source is YouTube, with other platforms to be added in the near future
-- Historical matches depend on highlight videos and comments remaining publicly available, making it difficult to add data on those matches to the site
+The frontend reads its backend URL from `frontend/js/config.js` in production. After deploying the FastAPI backend, set `ATMOS_CONFIG.API_BASE` to that public backend URL and redeploy the frontend.
+
+The Railway backend must have these environment variables:
+
+```bash
+API_FOOTBALL_KEY=your_api_football_key_goes_here
+DATABASE_URL=your_neon_pooled_connection_string
+DIRECT_DATABASE_URL=your_neon_direct_connection_string
+FOOTBALL_DATA_API_KEY=your_football_data_api_key_goes_here
+YOUTUBE_API_KEY=your_youtube_api_key_goes_here
+CORS_ORIGINS=https://atmosfc-v1.vercel.app,http://localhost:3000,http://127.0.0.1:3000
+```
+
+Railway runs the database migrations on startup before launching FastAPI.

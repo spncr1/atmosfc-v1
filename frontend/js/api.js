@@ -22,7 +22,7 @@ function resolveApiBase() {
 
 async function apiGet(path, params = {}) {
   if (!API_BASE) {
-    throw new Error("Frontend API URL is not configured. Set ATMOS_CONFIG.API_BASE in js/config.js to the deployed Railway backend URL.");
+    throw new Error("Frontend API URL is not configured. Set ATMOS_CONFIG.API_BASE in js/config.js to the deployed backend URL.");
   }
   const url = new URL(`${API_BASE}${path}`);
   Object.entries(params).forEach(([key, value]) => {
@@ -30,20 +30,28 @@ async function apiGet(path, params = {}) {
       url.searchParams.set(key, value);
     }
   });
-  const response = await fetch(url);
+  const response = await fetchApi(url);
   return readResponse(response);
 }
 
 async function apiPost(path, body = {}) {
   if (!API_BASE) {
-    throw new Error("Frontend API URL is not configured. Set ATMOS_CONFIG.API_BASE in js/config.js to the deployed Railway backend URL.");
+    throw new Error("Frontend API URL is not configured. Set ATMOS_CONFIG.API_BASE in js/config.js to the deployed backend URL.");
   }
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetchApi(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   return readResponse(response);
+}
+
+async function fetchApi(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    throw new Error(`Atmos FC API is unreachable at ${API_BASE}. Check the backend deployment and frontend API URL.`);
+  }
 }
 
 async function readResponse(response) {

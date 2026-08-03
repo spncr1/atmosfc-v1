@@ -1,26 +1,18 @@
 const recentGrid = document.querySelector("[data-recent]");
 const recentHeading = document.querySelector("[data-recent-heading]");
 const searchForm = document.querySelector("[data-search-form]");
-const competitionInputs = searchForm.querySelectorAll('input[name="competition"]');
-
-const competitionLabels = {
-  PL: "Premier League",
-  PD: "La Liga",
-  BL1: "Bundesliga",
-  SA: "Serie A",
-  FL1: "Ligue 1",
-  CL: "UCL",
-  EL: "UEL",
-  UECL: "UECL",
-};
-
-const unavailableCompetitions = new Set(["EL", "UECL"]);
+const competitionFilters = document.querySelector("[data-competition-filters]");
+const seasonFilters = document.querySelector("[data-season-filters]");
+let competitionLabels = {};
 
 init();
 
 async function init() {
+  const metadata = await loadMetadata();
+  renderFilters(metadata);
+  competitionLabels = labelsByCode(metadata.competitions);
   searchForm.addEventListener("submit", handleSearch);
-  competitionInputs.forEach((input) => {
+  searchForm.querySelectorAll('input[name="competition"]').forEach((input) => {
     input.addEventListener("change", () => loadRecentMatches(input.value));
   });
   await loadRecentMatches();
@@ -28,10 +20,6 @@ async function init() {
 
 async function loadRecentMatches(competition = selectedCompetition()) {
   updateRecentHeading(competition);
-  if (unavailableCompetitions.has(competition)) {
-    setStatus(recentGrid, `${competitionLabels[competition]} is currently unavailable.`);
-    return;
-  }
   setStatus(recentGrid, loadingRecentMessage(competition));
   try {
     const { matches } = await apiGet("/matches/recent", { limit: 12, competition });
@@ -39,6 +27,85 @@ async function loadRecentMatches(competition = selectedCompetition()) {
   } catch (error) {
     setStatus(recentGrid, error.message || "Could not load recent matches.");
   }
+}
+
+async function loadMetadata() {
+  try {
+    const metadata = await apiGet("/metadata");
+    if (Array.isArray(metadata.competitions) && Array.isArray(metadata.seasons)) {
+      return metadata;
+    }
+  } catch (error) {
+    console.warn("Falling back to bundled filter metadata.", error);
+  }
+  return fallbackMetadata();
+}
+
+function renderFilters(metadata) {
+  renderCompetitionFilters(metadata.competitions);
+  renderSeasonFilters(metadata.seasons);
+}
+
+function renderCompetitionFilters(competitions) {
+  competitionFilters.innerHTML = [
+    filterRadio("competition", "", "All", null, true),
+    ...competitions.map((competition) => filterRadio(
+      "competition",
+      competition.code,
+      competition.short_name || competition.name,
+      competition.logo_url,
+      false,
+    )),
+  ].join("");
+}
+
+function renderSeasonFilters(seasons) {
+  seasonFilters.innerHTML = [
+    filterRadio("season", "", "All", null, true),
+    ...seasons.map((season) => filterRadio("season", String(season.year), compactSeasonLabel(season.label), null, false)),
+  ].join("");
+}
+
+function filterRadio(name, value, label, icon, checked) {
+  const iconMarkup = icon ? `<img class="filter-emblem" src="${escapeAttr(icon)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+  return `
+    <label class="filter-option">
+      <input type="radio" name="${escapeAttr(name)}" value="${escapeAttr(value)}" ${checked ? "checked" : ""}>
+      <span>${iconMarkup}${escapeHtml(label)}</span>
+    </label>
+  `;
+}
+
+function labelsByCode(competitions) {
+  return competitions.reduce((labels, competition) => {
+    labels[competition.code] = competition.name;
+    return labels;
+  }, {});
+}
+
+function fallbackMetadata() {
+  return {
+    competitions: [
+      { code: "PL", name: "Premier League", short_name: "PL", logo_url: "https://media.api-sports.io/football/leagues/39.png" },
+      { code: "PD", name: "La Liga", short_name: "La Liga", logo_url: "https://media.api-sports.io/football/leagues/140.png" },
+      { code: "BL1", name: "Bundesliga", short_name: "Bundesliga", logo_url: "https://media.api-sports.io/football/leagues/78.png" },
+      { code: "SA", name: "Serie A", short_name: "Serie A", logo_url: "https://media.api-sports.io/football/leagues/135.png" },
+      { code: "FL1", name: "Ligue 1", short_name: "Ligue 1", logo_url: "https://media.api-sports.io/football/leagues/61.png" },
+      { code: "CL", name: "UEFA Champions League", short_name: "UCL", logo_url: "https://media.api-sports.io/football/leagues/2.png" },
+      { code: "EL", name: "UEFA Europa League", short_name: "UEL", logo_url: "https://media.api-sports.io/football/leagues/3.png" },
+      { code: "UECL", name: "UEFA Conference League", short_name: "UECL", logo_url: "https://media.api-sports.io/football/leagues/848.png" },
+    ],
+    seasons: [
+      { year: 2026, label: "2026/27", is_current: true },
+      { year: 2025, label: "2025/26", is_current: false },
+    ],
+  };
+}
+
+function compactSeasonLabel(label) {
+  const parts = String(label || "").split("/");
+  if (parts.length !== 2) return label;
+  return `${parts[0].slice(-2)}/${parts[1]}`;
 }
 
 function handleSearch(event) {
@@ -159,7 +226,7 @@ function setStatus(target, message) {
 }
 
 function selectedCompetition() {
-  return searchForm.elements.competition.value;
+  return searchForm.elements.competition?.value || "";
 }
 
 function updateRecentHeading(competition) {
@@ -170,4 +237,17 @@ function updateRecentHeading(competition) {
 function loadingRecentMessage(competition) {
   const label = competitionLabels[competition];
   return label ? `Loading recent ${label} matches...` : "Loading recent matches...";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("`", "&#096;");
 }

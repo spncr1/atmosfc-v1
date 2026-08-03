@@ -9,9 +9,11 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import get_settings
-from backend.models.schemas import AnalyseRequest, AnalysisResponse, AnalyseMeta, MatchSearchResponse
+from backend.models.schemas import AnalyseRequest, AnalysisResponse, AnalyseMeta, MatchSearchResponse, MetadataResponse
 from backend.services import football_api
 from backend.services.football_api import FootballDataError
+from backend.services.metadata import MetadataError, frontend_metadata
+from backend.services.matches import MatchDataError, recent_matches, search_matches
 from backend.services.youtube import YouTubeError, fetch_match_comments
 from backend.services.sentiment import analyse_comments
 
@@ -41,6 +43,16 @@ async def debug_config() -> dict[str, list[str]]:
     return {"allowed_origins": settings.allowed_origins}
 
 
+@app.get("/metadata", response_model=MetadataResponse)
+async def get_metadata() -> MetadataResponse:
+    # Return synced frontend filter options.
+
+    try:
+        return await frontend_metadata()
+    except MetadataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @app.get("/matches/recent")
 async def get_recent_matches(
     competition: str | None = None,
@@ -49,8 +61,8 @@ async def get_recent_matches(
     # Return recent finished matches for the landing page.
 
     try:
-        return {"matches": await football_api.recent_matches(limit=limit, competition=competition)}
-    except FootballDataError as exc:
+        return {"matches": await recent_matches(limit=limit, competition=competition)}
+    except MatchDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
@@ -66,7 +78,7 @@ async def get_search_matches(
 
     try:
         season_year = int(season) if season else None
-        matches = await football_api.search_matches(query=q, competition=competition, season=season_year)
+        matches = await search_matches(query=q, competition=competition, season=season_year)
         total = len(matches)
         total_pages = ceil(total / page_size) if total else 0
         current_page = min(page, total_pages) if total_pages else 1
@@ -85,7 +97,7 @@ async def get_search_matches(
         }
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Season must be a year such as 2025.") from exc
-    except FootballDataError as exc:
+    except MatchDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 

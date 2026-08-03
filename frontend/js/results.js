@@ -2,41 +2,88 @@ const resultsGrid = document.querySelector("[data-results]");
 const resultsSummary = document.querySelector("[data-results-summary]") || createResultsSummary();
 const paginationEl = document.querySelector("[data-pagination]");
 const filterForm = document.querySelector("[data-filter-form]");
+const competitionSelect = document.querySelector("[data-competition-select]");
+const seasonSelect = document.querySelector("[data-season-select]");
 const params = new URLSearchParams(window.location.search);
 const PAGE_SIZE = 15;
-const unavailableCompetitions = new Set(["EL", "UECL"]);
-const competitionLabels = {
-  PL: "Premier League",
-  PD: "La Liga",
-  BL1: "Bundesliga",
-  SA: "Serie A",
-  FL1: "Ligue 1",
-  CL: "UCL",
-  EL: "UEL",
-  UECL: "UECL",
-};
-
-const seasonLabels = {
-  2025: "2025/26",
-  2024: "2024/25",
-  2023: "2023/24",
-  2022: "2022/23",
-  2021: "2021/22",
-  2020: "2020/21",
-  2019: "2019/20",
-  2018: "2018/19",
-  2017: "2017/18",
-  2016: "2016/17",
-  2015: "2015/16",
-};
+let competitionLabels = {};
+let seasonLabels = {};
 
 init();
 
 async function init() {
   if (!resultsGrid || !filterForm) return;
+  const metadata = await loadMetadata();
+  renderFilterOptions(metadata);
+  competitionLabels = labelsByCode(metadata.competitions);
+  seasonLabels = labelsByYear(metadata.seasons);
   hydrateForm();
   filterForm.addEventListener("submit", handleFilter);
   await loadResults();
+}
+
+async function loadMetadata() {
+  try {
+    const metadata = await apiGet("/metadata");
+    if (Array.isArray(metadata.competitions) && Array.isArray(metadata.seasons)) {
+      return metadata;
+    }
+  } catch (error) {
+    console.warn("Falling back to bundled filter metadata.", error);
+  }
+  return fallbackMetadata();
+}
+
+function renderFilterOptions(metadata) {
+  if (competitionSelect) {
+    competitionSelect.innerHTML = [
+      `<option value="">All</option>`,
+      ...metadata.competitions.map((competition) => (
+        `<option value="${escapeAttr(competition.code)}">${escapeHtml(competition.name)}</option>`
+      )),
+    ].join("");
+  }
+  if (seasonSelect) {
+    seasonSelect.innerHTML = [
+      `<option value="">All seasons</option>`,
+      ...metadata.seasons.map((season) => (
+        `<option value="${escapeAttr(season.year)}">${escapeHtml(season.label)}</option>`
+      )),
+    ].join("");
+  }
+}
+
+function labelsByCode(competitions) {
+  return competitions.reduce((labels, competition) => {
+    labels[competition.code] = competition.name;
+    return labels;
+  }, {});
+}
+
+function labelsByYear(seasons) {
+  return seasons.reduce((labels, season) => {
+    labels[String(season.year)] = season.label;
+    return labels;
+  }, {});
+}
+
+function fallbackMetadata() {
+  return {
+    competitions: [
+      { code: "PL", name: "Premier League" },
+      { code: "PD", name: "La Liga" },
+      { code: "BL1", name: "Bundesliga" },
+      { code: "SA", name: "Serie A" },
+      { code: "FL1", name: "Ligue 1" },
+      { code: "CL", name: "UEFA Champions League" },
+      { code: "EL", name: "UEFA Europa League" },
+      { code: "UECL", name: "UEFA Conference League" },
+    ],
+    seasons: [
+      { year: 2026, label: "2026/27", is_current: true },
+      { year: 2025, label: "2025/26", is_current: false },
+    ],
+  };
 }
 
 function hydrateForm() {
@@ -51,12 +98,6 @@ async function loadResults() {
   const competition = params.get("competition");
   const season = params.get("season");
   const page = currentPage();
-  if (unavailableCompetitions.has(competition)) {
-    resultsGrid.innerHTML = "";
-    clearPagination();
-    setStatus(resultsSummary, `${competitionLabels[competition]} is currently unavailable.`);
-    return;
-  }
   resultsGrid.innerHTML = "";
   clearPagination();
   setStatus(resultsSummary, `Searching ${searchContext(q, competition, season)}...`);
@@ -263,4 +304,17 @@ function searchContext(q, competition, season) {
   if (competitionLabels[competition]) parts.push(`in ${competitionLabels[competition]}`);
   if (seasonLabels[season]) parts.push(`during ${seasonLabels[season]}`);
   return parts.length ? parts.join(" ") : "across all supported matches";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("`", "&#096;");
 }

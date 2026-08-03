@@ -51,6 +51,31 @@ class MatchSearchResponse(BaseModel):
     pagination: SearchPagination
 
 
+class CompetitionOption(BaseModel):
+    # A synced competition exposed to frontend filters.
+
+    code: str
+    name: str
+    short_name: str
+    provider_id: int
+    logo_url: Optional[str] = None
+
+
+class SeasonOption(BaseModel):
+    # A synced season exposed to frontend filters.
+
+    year: int
+    label: str
+    is_current: bool
+
+
+class MetadataResponse(BaseModel):
+    # Frontend filter metadata sourced from the local database.
+
+    competitions: List[CompetitionOption]
+    seasons: List[SeasonOption]
+
+
 class MatchEvent(BaseModel):
     # A timeline event displayed beside sentiment.
 
