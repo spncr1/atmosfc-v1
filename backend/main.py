@@ -13,7 +13,7 @@ from backend.models.schemas import AnalyseRequest, AnalysisResponse, AnalyseMeta
 from backend.services import football_api
 from backend.services.football_api import FootballDataError
 from backend.services.metadata import MetadataError, frontend_metadata
-from backend.services.matches import MatchDataError, recent_matches, search_matches
+from backend.services.matches import MatchDataError, analysis_match, recent_matches, search_matches
 from backend.services.youtube import YouTubeError, fetch_match_comments
 from backend.services.sentiment import analyse_comments
 
@@ -106,16 +106,21 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
     # Analyse YouTube sentiment for one Football-Data.org match.
 
     try:
-        raw_match = await football_api.get_match(payload.match_id)
-        home_team_detail, away_team_detail = await football_api.get_match_team_details(raw_match)
-        match = football_api.parse_match(raw_match, home_team_detail, away_team_detail)
-        match = await football_api.enrich_match_context(match, raw_match)
+        local_analysis = await analysis_match(payload.match_id)
+        if local_analysis is None:
+            raw_match = await football_api.get_match(payload.match_id)
+            home_team_detail, away_team_detail = await football_api.get_match_team_details(raw_match)
+            match = football_api.parse_match(raw_match, home_team_detail, away_team_detail)
+            match = await football_api.enrich_match_context(match, raw_match)
+            events = football_api.parse_events(raw_match)
+            score_margin = _score_margin(raw_match)
+        else:
+            match, events = local_analysis
+            score_margin = _summary_score_margin(match.score)
         if match.status != "FINISHED":
             raise HTTPException(status_code=400, detail="Only finished matches can be analysed.")
-        events = football_api.parse_events(raw_match)
         video_comments = fetch_match_comments(match)
         kickoff = datetime.fromisoformat(match.date.replace("Z", "+00:00")).astimezone(timezone.utc)
-        score_margin = _score_margin(raw_match)
         source_video_count = len({comment.permalink for comment in video_comments.comments}) or 1
         buckets, reaction_intensity, half_split, top_comments, peak_minute, peak_window, overall_vibe, crowd_energy = analyse_comments(
             video_comments.comments,
@@ -139,6 +144,8 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
                 youtube_video_url=video_comments.url,
             ),
         )
+    except MatchDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except FootballDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except YouTubeError as exc:
@@ -147,3 +154,13 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
 
 def _score_margin(raw_match: dict) -> int:
     return football_api.score_margin(raw_match)
+
+
+def _summary_score_margin(score: str | None) -> int:
+    if not score or "-" not in score:
+        return 0
+    home, away = score.split("-", maxsplit=1)
+    try:
+        return abs(int(home.strip()) - int(away.strip()))
+    except ValueError:
+        return 0

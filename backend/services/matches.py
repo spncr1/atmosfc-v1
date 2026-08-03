@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import joinedload, selectinload
 
-from backend.database.models import Competition, Fixture, Team
+from backend.database.models import Competition, Fixture, FixtureEvent, Team
 from backend.database.session import get_sessionmaker
-from backend.models.schemas import MatchSummary
+from backend.models.schemas import MatchEvent, MatchSummary
 from backend.repositories import football_data as repo
 
 
@@ -82,6 +84,39 @@ async def search_matches(
         raise MatchDataError("Search results could not be loaded from the local database.") from exc
 
     return [fixture_to_summary(fixture) for fixture in fixtures]
+
+
+async def analysis_match(match_id: str) -> tuple[MatchSummary, list[MatchEvent]] | None:
+    """Return a locally synced fixture and events for analysis, if present."""
+
+    try:
+        provider_fixture_id = int(match_id)
+    except (TypeError, ValueError):
+        return None
+
+    try:
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as session:
+            fixture = await session.scalar(
+                select(Fixture)
+                .options(
+                    joinedload(Fixture.competition),
+                    joinedload(Fixture.season),
+                    joinedload(Fixture.home_team),
+                    joinedload(Fixture.away_team),
+                    selectinload(Fixture.events).joinedload(FixtureEvent.team),
+                )
+                .where(
+                    Fixture.provider == repo.PROVIDER,
+                    Fixture.provider_fixture_id == provider_fixture_id,
+                )
+            )
+    except SQLAlchemyError as exc:
+        raise MatchDataError("Match analysis data could not be loaded from the local database.") from exc
+
+    if fixture is None:
+        return None
+    return fixture_to_summary(fixture), fixture_events_to_summary(fixture.events)
 
 
 def provider_competition_id_for_code(competition: str | None) -> int | None:
@@ -169,3 +204,32 @@ def app_status(status_short: str | None) -> str | None:
     if status_short in {"FT", "AET", "PEN"}:
         return "FINISHED"
     return status_short
+
+
+def fixture_events_to_summary(events: list[FixtureEvent]) -> list[MatchEvent]:
+    return [
+        MatchEvent(
+            minute=event.minute or 0,
+            type=event_type(event),
+            description=event_description(event),
+        )
+        for event in sorted(events, key=lambda item: ((item.minute or 0), (item.extra_minute or 0), item.id))
+        if event.type in {"Goal", "Card"}
+    ]
+
+
+def event_type(event: FixtureEvent) -> str:
+    if event.type == "Goal":
+        return "goal"
+    detail = (event.detail or "").lower()
+    if "red" in detail:
+        return "red-card"
+    return "yellow-card"
+
+
+def event_description(event: FixtureEvent) -> str:
+    minute = f"+{event.extra_minute}" if event.extra_minute else ""
+    team = f" ({event.team.name})" if event.team else ""
+    player = event.player_name or "Unknown player"
+    detail = event.detail or event.type
+    return f"{player}{minute} - {detail}{team}"
