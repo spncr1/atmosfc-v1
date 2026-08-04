@@ -348,8 +348,7 @@ def search_notices_from_sync_result(sync_result: dict) -> list[SearchNotice]:
                 type="provider_coverage_gap",
                 title="Provider coverage unavailable",
                 message=(
-                    f"API-Football does not provide {competition_name} data for {season}. "
-                    "This is a provider coverage gap, not a typo or faulty search."
+                    f"This application does not provide {competition_name} data for {season}. "
                 ),
             )
         ]
