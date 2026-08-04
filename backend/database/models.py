@@ -148,6 +148,16 @@ class Fixture(Base, TimestampMixin):
     home_team: Mapped[Team] = relationship(back_populates="home_fixtures", foreign_keys=[home_team_id])
     away_team: Mapped[Team] = relationship(back_populates="away_fixtures", foreign_keys=[away_team_id])
     events: Mapped[list[FixtureEvent]] = relationship(back_populates="fixture", cascade="all, delete-orphan")
+    event_sync_status: Mapped[FixtureEventSyncStatus | None] = relationship(
+        back_populates="fixture",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    youtube_comment_cache: Mapped[YouTubeCommentCache | None] = relationship(
+        back_populates="fixture",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     __table_args__ = (
         UniqueConstraint("provider", "provider_fixture_id", name="uq_fixtures_provider_id"),
@@ -183,6 +193,74 @@ class FixtureEvent(Base, TimestampMixin):
     )
 
 
+class FixtureEventSyncStatus(Base, TimestampMixin):
+    __tablename__ = "fixture_event_sync_status"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fixture_id: Mapped[int] = mapped_column(ForeignKey("fixtures.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending")
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    event_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    fixture: Mapped[Fixture] = relationship(back_populates="event_sync_status")
+
+    __table_args__ = (
+        UniqueConstraint("fixture_id", name="uq_fixture_event_sync_status_fixture"),
+        Index("ix_fixture_event_sync_status_status", "status"),
+        Index("ix_fixture_event_sync_status_checked_at", "checked_at"),
+    )
+
+
+class YouTubeCommentCache(Base, TimestampMixin):
+    __tablename__ = "youtube_comment_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fixture_id: Mapped[int] = mapped_column(ForeignKey("fixtures.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending")
+    raw_comment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    analysed_comment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_video_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    best_video_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    best_video_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    best_video_channel: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    fixture: Mapped[Fixture] = relationship(back_populates="youtube_comment_cache")
+
+    __table_args__ = (
+        UniqueConstraint("fixture_id", name="uq_youtube_comment_cache_fixture"),
+        Index("ix_youtube_comment_cache_status", "status"),
+        Index("ix_youtube_comment_cache_checked_at", "checked_at"),
+    )
+
+
+class BackgroundJob(Base, TimestampMixin):
+    __tablename__ = "background_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    job_key: Mapped[str] = mapped_column(String(260), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="queued")
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("job_type", "job_key", name="uq_background_jobs_type_key"),
+        Index("ix_background_jobs_status_available", "status", "available_at"),
+        Index("ix_background_jobs_type_status", "job_type", "status"),
+    )
+
+
 class SyncRun(Base, TimestampMixin):
     __tablename__ = "sync_runs"
 
@@ -203,4 +281,28 @@ class SyncRun(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_sync_runs_type_status", "sync_type", "status"),
         Index("ix_sync_runs_started_at", "started_at"),
+    )
+
+
+class ArchiveSyncStatus(Base, TimestampMixin):
+    __tablename__ = "archive_sync_status"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False, default="api_football")
+    scope_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    scope_key: Mapped[str] = mapped_column(String(260), nullable=False)
+    provider_team_ids: Mapped[list[int] | None] = mapped_column(JSONB, nullable=True)
+    provider_competition_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    season_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending")
+    records_seen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    records_changed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sync_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("provider", "scope_key", name="uq_archive_sync_status_provider_scope_key"),
+        Index("ix_archive_sync_status_scope_status", "scope_type", "status"),
+        Index("ix_archive_sync_status_lookup", "provider_competition_id", "season_year"),
     )

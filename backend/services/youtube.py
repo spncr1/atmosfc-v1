@@ -13,8 +13,15 @@ from backend.config import get_settings
 from backend.models.schemas import MatchSummary
 
 BASE_URL = "https://www.googleapis.com/youtube/v3"
-MAX_VIDEOS = 4
+MAX_VIDEOS = 8
+MAX_SEARCH_RESULTS_PER_QUERY = 5
 MAX_COMMENTS_PER_VIDEO = 100
+
+YOUTUBE_TEAM_ALIASES = {
+    "benfica": ["SL Benfica", "Sport Lisboa e Benfica"],
+    "fc st. gallen": ["St. Gallen", "FC St. Gallen"],
+    "atletico madrid": ["Atlético Madrid", "Atleti"],
+}
 
 
 class YouTubeError(RuntimeError):
@@ -57,10 +64,14 @@ def fetch_match_comments(match: MatchSummary) -> YouTubeCommentBatch:
 
     all_comments: List[YouTubeComment] = []
     best_video = videos[0]
+    best_video_comment_count = 0
 
     for video in videos:
         try:
             comments = _fetch_comments(video, settings.youtube_api_key)
+            if len(comments) > best_video_comment_count:
+                best_video = video
+                best_video_comment_count = len(comments)
             all_comments.extend(comments)
         except YouTubeError:
             # Comments disabled or unavailable — try next video
@@ -80,56 +91,55 @@ def fetch_match_comments(match: MatchSummary) -> YouTubeCommentBatch:
 def _search_videos(match: MatchSummary, api_key: str) -> List[dict]:
     # Search YouTube for highlight videos matching the match.
 
-    query = _build_query(match)
-    params = {
-        "part": "snippet",
-        "q": query,
-        "type": "video",
-        "maxResults": MAX_VIDEOS,
-        "order": "relevance",
-        "key": api_key,
-    }
-
-    # Add date window around match date to improve relevance
+    date_window = {}
     if match.date:
         match_dt = datetime.fromisoformat(match.date.replace("Z", "+00:00"))
         published_after = match_dt.strftime("%Y-%m-%dT00:00:00Z")
-        published_before_dt = match_dt.replace(
-            hour=23, minute=59, second=59
-        )
-        # Give a 3-day window after match for highlights to be uploaded
         from datetime import timedelta
         published_before = (match_dt + timedelta(days=3)).strftime("%Y-%m-%dT23:59:59Z")
-        params["publishedAfter"] = published_after
-        params["publishedBefore"] = published_before
+        date_window["publishedAfter"] = published_after
+        date_window["publishedBefore"] = published_before
+
+    videos = []
+    seen_video_ids = set()
 
     with httpx.Client(timeout=15.0) as client:
-        response = client.get(f"{BASE_URL}/search", params=params)
+        for query in _build_queries(match):
+            params = {
+                "part": "snippet",
+                "q": query,
+                "type": "video",
+                "maxResults": MAX_SEARCH_RESULTS_PER_QUERY,
+                "order": "relevance",
+                "key": api_key,
+                **date_window,
+            }
+            response = client.get(f"{BASE_URL}/search", params=params)
+            if response.status_code != 200:
+                raise YouTubeError(f"YouTube search failed: {response.status_code}")
 
-    if response.status_code != 200:
-        raise YouTubeError(f"YouTube search failed: {response.status_code}")
+            for item in response.json().get("items", []):
+                video_id = item.get("id", {}).get("videoId")
+                snippet = item.get("snippet", {})
+                if not video_id or video_id in seen_video_ids:
+                    continue
+                seen_video_ids.add(video_id)
+                published_at = snippet.get("publishedAt", "")
+                try:
+                    published_utc = datetime.fromisoformat(
+                        published_at.replace("Z", "+00:00")
+                    ).timestamp()
+                except ValueError:
+                    published_utc = 0.0
 
-    data = response.json()
-    videos = []
-    for item in data.get("items", []):
-        video_id = item.get("id", {}).get("videoId")
-        snippet = item.get("snippet", {})
-        if not video_id:
-            continue
-        published_at = snippet.get("publishedAt", "")
-        try:
-            published_utc = datetime.fromisoformat(
-                published_at.replace("Z", "+00:00")
-            ).timestamp()
-        except ValueError:
-            published_utc = 0.0
-
-        videos.append({
-            "id": video_id,
-            "title": snippet.get("title", ""),
-            "channel": snippet.get("channelTitle", ""),
-            "published_utc": published_utc,
-        })
+                videos.append({
+                    "id": video_id,
+                    "title": snippet.get("title", ""),
+                    "channel": snippet.get("channelTitle", ""),
+                    "published_utc": published_utc,
+                })
+                if len(videos) >= MAX_VIDEOS:
+                    return videos
 
     return videos
 
@@ -197,13 +207,44 @@ def _fetch_comments(video: dict, api_key: str) -> List[YouTubeComment]:
 def _build_query(match: MatchSummary) -> str:
     # Build a YouTube search query for a match.
 
+    return _build_queries(match)[0]
+
+
+def _build_queries(match: MatchSummary) -> List[str]:
+    # Build several focused searches because official highlights often use short names.
+
     home = match.home
     away = match.away
     competition = match.competition
+    score = match.score or ""
+    home_clean = _youtube_team_name(home)
+    away_clean = _youtube_team_name(away)
+    home_alias = _youtube_team_aliases(home)[0]
+    away_alias = _youtube_team_aliases(away)[0]
 
-    # Strip common suffixes that hurt search relevance
+    queries = [
+        f"{home_clean} {away_clean} {score} highlights {competition}",
+        f"{home_alias} {away_alias} {score} highlights",
+        f"{home_alias} {away_clean} highlights",
+        f"{home_clean} {away_clean} highlights {competition}",
+    ]
+    return list(dict.fromkeys(" ".join(query.split()) for query in queries if query.strip()))
+
+
+def _youtube_team_name(name: str) -> str:
+    # Strip common affixes that hurt search relevance.
+
+    clean = name.strip()
+    for prefix in ["FC ", "CF ", "SC ", "AC ", "AFC ", "RFC "]:
+        if clean.upper().startswith(prefix):
+            clean = clean[len(prefix):]
     for suffix in [" FC", " CF", " SC", " AC", " AFC", " RFC"]:
-        home = home.replace(suffix, "")
-        away = away.replace(suffix, "")
+        if clean.upper().endswith(suffix):
+            clean = clean[:-len(suffix)]
+    return clean.strip()
 
-    return f"{home} {away} highlights {competition}"
+
+def _youtube_team_aliases(name: str) -> List[str]:
+    clean = _youtube_team_name(name)
+    aliases = YOUTUBE_TEAM_ALIASES.get(name.strip().lower(), [])
+    return aliases + [clean]

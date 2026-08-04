@@ -44,7 +44,7 @@ function renderAnalysis(data) {
   renderMatchHeader(data.match);
   renderSummary(data.meta);
   renderChart(data.reaction_intensity || []);
-  renderEvents(data.events || []);
+  renderEvents(data.events || [], data.match?.event_feed_status);
   renderComments(data.top_comments || [], data.meta.youtube_video_url);
 }
 
@@ -250,7 +250,10 @@ const reactionZonePlugin = {
   },
 };
 
-function renderEvents(items) {
+function renderEvents(items, status = "unchecked") {
+  const fallback = status === "unavailable"
+    ? "Event feed checked. API-Football has no timeline detail for this match."
+    : "Event detail has not been loaded for this match yet.";
   eventsEl.innerHTML = items.length
     ? items.map((event) => `
       <li>
@@ -259,7 +262,7 @@ function renderEvents(items) {
         <em class="event-pill event-pill-${event.type}">${escapeHtml(eventLabel(event.type))}</em>
       </li>
     `).join("")
-    : `<li class="analysis-empty">Event detail unavailable from the match feed.</li>`;
+    : `<li class="analysis-empty">${escapeHtml(fallback)}</li>`;
 }
 
 function renderComments(items, videoUrl) {

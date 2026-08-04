@@ -13,8 +13,15 @@ from backend.models.schemas import AnalyseRequest, AnalysisResponse, AnalyseMeta
 from backend.services import football_api
 from backend.services.football_api import FootballDataError
 from backend.services.metadata import MetadataError, frontend_metadata
-from backend.services.matches import MatchDataError, analysis_match, recent_matches, search_matches
+from backend.services.background_jobs import queue_youtube_comment_count_jobs
+from backend.services.matches import (
+    MatchDataError,
+    analysis_match,
+    recent_matches,
+    search_matches,
+)
 from backend.services.youtube import YouTubeError, fetch_match_comments
+from backend.services.youtube_cache import cache_youtube_comment_batch, cache_youtube_comment_error
 from backend.services.sentiment import analyse_comments
 
 app = FastAPI(title="Atmos API", version="0.1.0")
@@ -61,7 +68,9 @@ async def get_recent_matches(
     # Return recent finished matches for the landing page.
 
     try:
-        return {"matches": await recent_matches(limit=limit, competition=competition)}
+        matches = await recent_matches(limit=limit, competition=competition)
+        await queue_youtube_comment_count_jobs(matches)
+        return {"matches": matches}
     except MatchDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -78,14 +87,17 @@ async def get_search_matches(
 
     try:
         season_year = int(season) if season else None
-        matches = await search_matches(query=q, competition=competition, season=season_year)
+        result = await search_matches(query=q, competition=competition, season=season_year)
+        matches = result.matches
         total = len(matches)
         total_pages = ceil(total / page_size) if total else 0
         current_page = min(page, total_pages) if total_pages else 1
         start = (current_page - 1) * page_size
         end = start + page_size
+        page_matches = matches[start:end]
+        await queue_youtube_comment_count_jobs(page_matches)
         return {
-            "matches": matches[start:end],
+            "matches": page_matches,
             "pagination": {
                 "page": current_page,
                 "page_size": page_size,
@@ -94,6 +106,7 @@ async def get_search_matches(
                 "has_previous": current_page > 1,
                 "has_next": total_pages > 0 and current_page < total_pages,
             },
+            "notices": result.notices,
         }
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Season must be a year such as 2025.") from exc
@@ -105,6 +118,7 @@ async def get_search_matches(
 async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
     # Analyse YouTube sentiment for one Football-Data.org match.
 
+    match = None
     try:
         local_analysis = await analysis_match(payload.match_id)
         if local_analysis is None:
@@ -119,7 +133,11 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
             score_margin = _summary_score_margin(match.score)
         if match.status != "FINISHED":
             raise HTTPException(status_code=400, detail="Only finished matches can be analysed.")
-        video_comments = fetch_match_comments(match)
+        try:
+            video_comments = fetch_match_comments(match)
+        except YouTubeError as exc:
+            await cache_youtube_comment_error(match, exc)
+            raise
         kickoff = datetime.fromisoformat(match.date.replace("Z", "+00:00")).astimezone(timezone.utc)
         source_video_count = len({comment.permalink for comment in video_comments.comments}) or 1
         buckets, reaction_intensity, half_split, top_comments, peak_minute, peak_window, overall_vibe, crowd_energy = analyse_comments(
@@ -127,6 +145,11 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
             kickoff,
             score_margin,
         )
+        total_comments = sum(bucket.comment_count for bucket in reaction_intensity)
+        cache_result = await cache_youtube_comment_batch(match, video_comments)
+        match.youtube_comment_status = cache_result.status
+        match.youtube_comment_count = cache_result.raw_comment_count
+        match.youtube_analysed_comment_count = cache_result.analysed_comment_count
         return AnalysisResponse(
             match=match,
             events=events,
@@ -135,7 +158,7 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
             top_comments=top_comments,
             half_split=half_split,
             meta=AnalyseMeta(
-                total_comments=sum(bucket.comment_count for bucket in reaction_intensity),
+                total_comments=total_comments,
                 peak_minute=peak_minute,
                 peak_window=peak_window,
                 source_video_count=source_video_count,

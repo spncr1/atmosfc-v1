@@ -31,6 +31,12 @@ class MatchSummary(BaseModel):
     round: Optional[str] = None
     season: Optional[str] = None
     status: Optional[str] = None
+    youtube_comment_count: Optional[int] = None
+    youtube_analysed_comment_count: Optional[int] = None
+    youtube_comment_status: Optional[str] = None
+    youtube_checked_at: Optional[str] = None
+    event_feed_status: Optional[str] = None
+    event_feed_checked_at: Optional[str] = None
 
 
 class SearchPagination(BaseModel):
@@ -44,11 +50,20 @@ class SearchPagination(BaseModel):
     has_next: bool
 
 
+class SearchNotice(BaseModel):
+    # Non-fatal search context, such as provider coverage gaps.
+
+    type: str
+    title: str
+    message: str
+
+
 class MatchSearchResponse(BaseModel):
     # Paginated match search response consumed by results.html.
 
     matches: List[MatchSummary]
     pagination: SearchPagination
+    notices: List[SearchNotice] = []
 
 
 class CompetitionOption(BaseModel):
@@ -59,6 +74,9 @@ class CompetitionOption(BaseModel):
     short_name: str
     provider_id: int
     logo_url: Optional[str] = None
+    country_name: Optional[str] = None
+    country_code: Optional[str] = None
+    group: str = "Domestic leagues"
 
 
 class SeasonOption(BaseModel):

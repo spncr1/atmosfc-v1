@@ -7,24 +7,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from backend.database.session import get_sessionmaker
 from backend.models.schemas import CompetitionOption, MetadataResponse, SeasonOption
 from backend.repositories import football_data as repo
-from backend.services.matches import APP_COMPETITION_NAMES, PROVIDER_ID_TO_COMPETITION_CODE
+from backend.services.matches import SUPPORTED_COMPETITIONS
+from backend.services.sync import archive_seasons
 
 
 class MetadataError(RuntimeError):
     """Raised when frontend metadata cannot be loaded."""
-
-
-COMPETITION_ORDER = [39, 140, 78, 135, 61, 2, 3, 848]
-COMPETITION_SHORT_NAMES = {
-    39: "PL",
-    140: "La Liga",
-    78: "Bundesliga",
-    135: "Serie A",
-    61: "Ligue 1",
-    2: "UCL",
-    3: "UEL",
-    848: "UECL",
-}
 
 
 async def frontend_metadata() -> MetadataResponse:
@@ -34,35 +22,34 @@ async def frontend_metadata() -> MetadataResponse:
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
             competitions = await repo.synced_competitions(session)
-            seasons = await repo.synced_competition_seasons(session)
+            synced_seasons = await repo.synced_competition_seasons(session)
     except SQLAlchemyError as exc:
         raise MetadataError("Frontend metadata could not be loaded from the local database.") from exc
 
-    known_provider_ids = set(PROVIDER_ID_TO_COMPETITION_CODE)
-    ordered_competitions = sorted(
-        [competition for competition in competitions if competition.provider_competition_id in known_provider_ids],
-        key=lambda competition: COMPETITION_ORDER.index(competition.provider_competition_id)
-        if competition.provider_competition_id in COMPETITION_ORDER
-        else len(COMPETITION_ORDER),
-    )
-
+    synced_by_provider_id = {competition.provider_competition_id: competition for competition in competitions}
+    synced_by_year = {season.year: season for season in synced_seasons}
     return MetadataResponse(
         competitions=[
             CompetitionOption(
-                code=PROVIDER_ID_TO_COMPETITION_CODE[competition.provider_competition_id],
-                name=APP_COMPETITION_NAMES.get(competition.provider_competition_id, competition.name),
-                short_name=COMPETITION_SHORT_NAMES.get(competition.provider_competition_id, competition.name),
-                provider_id=competition.provider_competition_id,
-                logo_url=competition.logo_url,
+                code=str(definition["code"]),
+                name=str(definition["name"]),
+                short_name=str(definition["short_name"]),
+                provider_id=int(definition["provider_id"]),
+                logo_url=synced_by_provider_id.get(int(definition["provider_id"])).logo_url
+                if int(definition["provider_id"]) in synced_by_provider_id
+                else definition.get("logo_url"),
+                country_name=definition.get("country_name"),
+                country_code=definition.get("country_code"),
+                group=str(definition["group"]),
             )
-            for competition in ordered_competitions
+            for definition in SUPPORTED_COMPETITIONS
         ],
         seasons=[
             SeasonOption(
-                year=season.year,
-                label=season.label,
-                is_current=season.is_current,
+                year=year,
+                label=synced_by_year[year].label if year in synced_by_year else repo.season_label(year),
+                is_current=synced_by_year[year].is_current if year in synced_by_year else year == archive_seasons()[0],
             )
-            for season in seasons
+            for year in archive_seasons()
         ],
     )

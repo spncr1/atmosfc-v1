@@ -26,17 +26,24 @@ CORE_COMPETITIONS = [
     CompetitionTarget(78, "Bundesliga"),
     CompetitionTarget(135, "Serie A"),
     CompetitionTarget(61, "Ligue 1"),
+    CompetitionTarget(88, "Eredivisie"),
+    CompetitionTarget(94, "Liga Portugal"),
+    CompetitionTarget(144, "Belgian Pro League"),
+    CompetitionTarget(203, "Turkish Super Lig"),
     CompetitionTarget(2, "UEFA Champions League"),
     CompetitionTarget(3, "UEFA Europa League"),
     CompetitionTarget(848, "UEFA Conference League"),
 ]
+CORE_COMPETITION_IDS = {target.provider_id for target in CORE_COMPETITIONS}
+ARCHIVE_START_SEASON = 2010
 
 
 async def sync_core_football_data(
     *,
     season_years: list[int] | None = None,
-    recent_limit: int = 3,
+    recent_limit: int | None = 3,
     include_events: bool = True,
+    competition_ids: list[int] | None = None,
 ) -> dict[str, Any]:
     """Sync the first production MVP slice from API-Football into Postgres."""
 
@@ -51,12 +58,14 @@ async def sync_core_football_data(
                 "requested_seasons": season_years,
                 "recent_limit": recent_limit,
                 "include_events": include_events,
+                "competition_ids": competition_ids,
             },
         )
         await session.commit()
         try:
-            result = await _sync_core(session, client, season_years, recent_limit, include_events)
+            result = await _sync_core(session, client, season_years, recent_limit, include_events, competition_ids)
         except Exception as exc:
+            await session.rollback()
             await repo.finish_sync_run(session, sync_run, status="failed", error_message=str(exc))
             await session.commit()
             raise
@@ -77,8 +86,9 @@ async def _sync_core(
     session: AsyncSession,
     client: ApiFootballClient,
     season_years: list[int] | None,
-    recent_limit: int,
+    recent_limit: int | None,
     include_events: bool,
+    competition_ids: list[int] | None,
 ) -> dict[str, Any]:
     api_seasons = await client.seasons()
     selected_seasons = select_sync_seasons(api_seasons, season_years)
@@ -100,7 +110,12 @@ async def _sync_core(
         await repo.upsert_season(session, season_year, is_current=season_year == current_year)
         records_changed += 1
 
-    for target in CORE_COMPETITIONS:
+    targets = [
+        target for target in CORE_COMPETITIONS
+        if not competition_ids or target.provider_id in set(competition_ids)
+    ]
+
+    for target in targets:
         for season_year in selected_seasons:
             league_rows = await client.leagues(league_id=target.provider_id, season=season_year)
             records_seen += len(league_rows)
@@ -123,25 +138,334 @@ async def _sync_core(
             records_changed += len(team_rows)
             synced["teams"] += len(team_rows)
 
-            fixtures = await client.fixtures(
-                league_id=target.provider_id,
-                season=season_year,
-                status="FT-AET-PEN",
-                last=max(1, recent_limit),
-            )
+            fixture_args = {
+                "league_id": target.provider_id,
+                "season": season_year,
+                "status": "FT-AET-PEN",
+            }
+            if recent_limit is not None:
+                fixture_args["last"] = max(1, recent_limit)
+            fixtures = await client.fixtures(**fixture_args)
             records_seen += len(fixtures)
-            for raw_fixture in fixtures:
-                fixture, new_teams = await sync_fixture(session, raw_fixture, competition, season, teams_by_provider_id)
-                synced["fixtures"] += 1
-                synced["teams"] += new_teams
-                records_changed += 1 + new_teams
+            if include_events:
+                for raw_fixture in fixtures:
+                    fixture, new_teams = await sync_fixture(session, raw_fixture, competition, season, teams_by_provider_id)
+                    synced["fixtures"] += 1
+                    synced["teams"] += new_teams
+                    records_changed += 1 + new_teams
 
-                if include_events:
                     events = await client.fixture_events(fixture.provider_fixture_id)
                     synced["event_requests"] += 1
                     synced["fixture_events"] += await repo.replace_fixture_events(session, fixture, events)
                     records_seen += len(events)
                     records_changed += len(events)
+            else:
+                _, new_teams = await repo.upsert_fixtures(session, fixtures, competition, season, teams_by_provider_id)
+                synced["fixtures"] += len(fixtures)
+                synced["teams"] += new_teams
+                records_changed += len(fixtures) + new_teams
+
+    return {
+        "records_seen": records_seen,
+        "records_changed": records_changed,
+        "synced": synced,
+    }
+
+
+async def ensure_archive_scope_synced(
+    *,
+    scope_type: str,
+    provider_team_ids: list[int] | tuple[int, ...] | None = None,
+    provider_competition_id: int | None = None,
+    season_year: int | None = None,
+    is_archive_addressable: bool = True,
+    start_year: int = ARCHIVE_START_SEASON,
+) -> dict[str, Any]:
+    """Ensure the exact archive slice behind a results-page search is cached."""
+
+    if not is_archive_addressable:
+        return empty_hydration_result("Archive scope is not addressable.")
+    if scope_type == "supported_all_seasons":
+        return empty_hydration_result("All competitions across all seasons is too broad to hydrate automatically.")
+
+    team_ids = repo.normalise_provider_team_ids(provider_team_ids)
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        existing = await repo.archive_sync_status_for(
+            session,
+            scope_type=scope_type,
+            provider_team_ids=team_ids,
+            provider_competition_id=provider_competition_id,
+            season_year=season_year,
+        )
+        if existing is not None and existing.status in {"complete", "provider_unavailable"} and not should_recheck_archive_status(
+            existing.status,
+            existing.records_changed,
+            existing.sync_metadata,
+            provider_competition_id,
+            season_year,
+        ):
+            return {
+                "records_seen": existing.records_seen,
+                "records_changed": existing.records_changed,
+                "synced": existing.sync_metadata or {},
+                "status": existing.status,
+                "skipped": "Archive scope already checked.",
+            }
+
+        await repo.mark_archive_sync_pending(
+            session,
+            scope_type=scope_type,
+            provider_team_ids=team_ids,
+            provider_competition_id=provider_competition_id,
+            season_year=season_year,
+            sync_metadata={"previous_status": existing.status if existing else None},
+        )
+        await session.commit()
+
+        try:
+            client = ApiFootballClient()
+            result = await _hydrate_archive_scope(
+                session,
+                client,
+                scope_type=scope_type,
+                provider_team_ids=team_ids,
+                provider_competition_id=provider_competition_id,
+                season_year=season_year,
+                start_year=start_year,
+            )
+        except Exception as exc:
+            await session.rollback()
+            await repo.mark_archive_sync_failed(
+                session,
+                scope_type=scope_type,
+                provider_team_ids=team_ids,
+                provider_competition_id=provider_competition_id,
+                season_year=season_year,
+                error_message=str(exc),
+            )
+            await session.commit()
+            raise
+
+        status = archive_sync_status_from_result(result)
+        await repo.upsert_archive_sync_status(
+            session,
+            scope_type=scope_type,
+            provider_team_ids=team_ids,
+            provider_competition_id=provider_competition_id,
+            season_year=season_year,
+            status=status,
+            records_seen=result["records_seen"],
+            records_changed=result["records_changed"],
+            sync_metadata=result["synced"],
+        )
+        await session.commit()
+        result["status"] = status
+        return result
+
+
+async def _hydrate_archive_scope(
+    session: AsyncSession,
+    client: ApiFootballClient,
+    *,
+    scope_type: str,
+    provider_team_ids: list[int],
+    provider_competition_id: int | None,
+    season_year: int | None,
+    start_year: int,
+) -> dict[str, Any]:
+    api_seasons = await client.seasons()
+    selected_seasons = selected_archive_seasons(api_seasons, season_year, start_year)
+    records_seen = len(api_seasons)
+    records_changed = 0
+    synced = {
+        "scope_type": scope_type,
+        "selected_seasons": selected_seasons,
+        "competitions": 0,
+        "competition_seasons": 0,
+        "fixtures": 0,
+        "teams": 0,
+    }
+
+    if not selected_seasons:
+        return {
+            "records_seen": records_seen,
+            "records_changed": records_changed,
+            "synced": synced,
+        }
+
+    if provider_team_ids:
+        result = await hydrate_team_scope(
+            session,
+            client,
+            provider_team_ids=provider_team_ids,
+            season_years=selected_seasons,
+            provider_competition_id=provider_competition_id,
+        )
+    elif provider_competition_id is not None:
+        result = await hydrate_competition_scope(
+            session,
+            client,
+            season_years=selected_seasons,
+            provider_competition_id=provider_competition_id,
+        )
+    elif scope_type == "supported_season":
+        result = await hydrate_supported_competitions_scope(
+            session,
+            client,
+            season_years=selected_seasons,
+        )
+    else:
+        result = empty_hydration_result("Archive scope has no supported hydration strategy.")
+
+    result["records_seen"] += records_seen
+    result["synced"] = {
+        **synced,
+        **result["synced"],
+    }
+    return result
+
+
+async def hydrate_team_scope(
+    session: AsyncSession,
+    client: ApiFootballClient,
+    *,
+    provider_team_ids: list[int],
+    season_years: list[int],
+    provider_competition_id: int | None,
+) -> dict[str, Any]:
+    records_seen = 0
+    records_changed = 0
+    synced = empty_synced_payload(season_years)
+
+    for season_year in season_years:
+        for team_id in provider_team_ids:
+            if provider_competition_id is not None:
+                league_rows = await client.leagues(league_id=provider_competition_id, season=season_year)
+                records_seen += len(league_rows)
+                if not league_rows:
+                    synced["coverage_gaps"].append(coverage_gap(provider_competition_id, season_year))
+                    continue
+            fixture_args = {
+                "team_id": team_id,
+                "season": season_year,
+                "status": "FT-AET-PEN",
+            }
+            if provider_competition_id is not None:
+                fixture_args["league_id"] = provider_competition_id
+            fixtures = await client.fixtures(**fixture_args)
+            records_seen += len(fixtures)
+            grouped = group_supported_fixtures(fixtures, provider_competition_id)
+            result = await sync_grouped_fixtures(session, client, grouped, season_year)
+            records_seen += result["records_seen"]
+            records_changed += result["records_changed"]
+            merge_synced_counts(synced, result["synced"])
+
+    return {
+        "records_seen": records_seen,
+        "records_changed": records_changed,
+        "synced": synced,
+    }
+
+
+async def hydrate_competition_scope(
+    session: AsyncSession,
+    client: ApiFootballClient,
+    *,
+    season_years: list[int],
+    provider_competition_id: int,
+) -> dict[str, Any]:
+    records_seen = 0
+    records_changed = 0
+    synced = empty_synced_payload(season_years)
+
+    for season_year in season_years:
+        league_rows = await client.leagues(league_id=provider_competition_id, season=season_year)
+        records_seen += len(league_rows)
+        if not league_rows:
+            synced["coverage_gaps"].append(coverage_gap(provider_competition_id, season_year))
+            continue
+        fixtures = await client.fixtures(
+            league_id=provider_competition_id,
+            season=season_year,
+            status="FT-AET-PEN",
+        )
+        records_seen += len(fixtures)
+        result = await sync_grouped_fixtures(session, client, {provider_competition_id: fixtures}, season_year)
+        records_seen += result["records_seen"]
+        records_changed += result["records_changed"]
+        merge_synced_counts(synced, result["synced"])
+
+    return {
+        "records_seen": records_seen,
+        "records_changed": records_changed,
+        "synced": synced,
+    }
+
+
+async def hydrate_supported_competitions_scope(
+    session: AsyncSession,
+    client: ApiFootballClient,
+    *,
+    season_years: list[int],
+) -> dict[str, Any]:
+    records_seen = 0
+    records_changed = 0
+    synced = empty_synced_payload(season_years)
+
+    for season_year in season_years:
+        for competition_id in CORE_COMPETITION_IDS:
+            league_rows = await client.leagues(league_id=competition_id, season=season_year)
+            records_seen += len(league_rows)
+            if not league_rows:
+                synced["coverage_gaps"].append(coverage_gap(competition_id, season_year))
+                continue
+            fixtures = await client.fixtures(
+                league_id=competition_id,
+                season=season_year,
+                status="FT-AET-PEN",
+            )
+            records_seen += len(fixtures)
+            result = await sync_grouped_fixtures(session, client, {competition_id: fixtures}, season_year)
+            records_seen += result["records_seen"]
+            records_changed += result["records_changed"]
+            merge_synced_counts(synced, result["synced"])
+
+    return {
+        "records_seen": records_seen,
+        "records_changed": records_changed,
+        "synced": synced,
+    }
+
+
+async def sync_grouped_fixtures(
+    session: AsyncSession,
+    client: ApiFootballClient,
+    grouped: dict[int, list[dict[str, Any]]],
+    season_year: int,
+) -> dict[str, Any]:
+    records_seen = 0
+    records_changed = 0
+    synced = empty_synced_payload([season_year])
+    current_year = current_european_season_year()
+
+    for league_id, rows in grouped.items():
+        league_rows = await client.leagues(league_id=league_id, season=season_year)
+        records_seen += len(league_rows)
+        if not league_rows:
+            continue
+
+        competition = await repo.upsert_competition(session, league_rows[0])
+        season = await repo.upsert_season(session, season_year, is_current=season_year == current_year)
+        raw_season = league_season_payload(league_rows[0], season_year)
+        await repo.upsert_competition_season(session, competition, season, raw_season)
+
+        _, new_teams = await repo.upsert_fixtures(session, rows, competition, season, {})
+        synced["competitions"] += 1
+        synced["competition_seasons"] += 1
+        synced["fixtures"] += len(rows)
+        synced["teams"] += new_teams
+        records_changed += len(rows) + new_teams + 3
 
     return {
         "records_seen": records_seen,
@@ -190,6 +514,25 @@ def select_sync_seasons(api_seasons: list[int], requested: list[int] | None) -> 
     return selected or [available[-1]]
 
 
+def historical_seasons(api_seasons: list[int], start_year: int, end_year: int | None = None) -> list[int]:
+    """Return available seasons in an inclusive historical range."""
+
+    upper = current_european_season_year() if end_year is None else end_year
+    return [season for season in sorted(set(api_seasons)) if start_year <= season <= upper]
+
+
+def selected_archive_seasons(api_seasons: list[int], season_year: int | None, start_year: int) -> list[int]:
+    available = set(api_seasons)
+    if season_year is not None:
+        return [season_year] if season_year in available else []
+    return historical_seasons(api_seasons, start_year)
+
+
+def archive_seasons(start_year: int = ARCHIVE_START_SEASON, end_year: int | None = None) -> list[int]:
+    upper = current_european_season_year() if end_year is None else end_year
+    return list(range(upper, start_year - 1, -1))
+
+
 def current_european_season_year(today: date | None = None) -> int:
     value = today or date.today()
     return value.year if value.month >= 7 else value.year - 1
@@ -200,3 +543,81 @@ def league_season_payload(raw_league: dict[str, Any], season_year: int) -> dict[
         if item.get("year") == season_year:
             return item
     return None
+
+
+def group_supported_fixtures(
+    fixtures: list[dict[str, Any]],
+    provider_competition_id: int | None,
+) -> dict[int, list[dict[str, Any]]]:
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    allowed_ids = {provider_competition_id} if provider_competition_id is not None else CORE_COMPETITION_IDS
+    for raw in fixtures:
+        league = raw.get("league") or {}
+        league_id = league.get("id")
+        if league_id not in allowed_ids:
+            continue
+        grouped.setdefault(int(league_id), []).append(raw)
+    return grouped
+
+
+def empty_hydration_result(reason: str) -> dict[str, Any]:
+    return {
+        "records_seen": 0,
+        "records_changed": 0,
+        "synced": {
+            "selected_seasons": [],
+            "competitions": 0,
+            "competition_seasons": 0,
+            "fixtures": 0,
+            "teams": 0,
+            "coverage_gaps": [],
+        },
+        "skipped": reason,
+    }
+
+
+def empty_synced_payload(season_years: list[int]) -> dict[str, Any]:
+    return {
+        "selected_seasons": season_years,
+        "competitions": 0,
+        "competition_seasons": 0,
+        "fixtures": 0,
+        "teams": 0,
+        "coverage_gaps": [],
+    }
+
+
+def merge_synced_counts(target: dict[str, Any], source: dict[str, Any]) -> None:
+    for key in ("competitions", "competition_seasons", "fixtures", "teams"):
+        target[key] = int(target.get(key, 0)) + int(source.get(key, 0))
+    target.setdefault("coverage_gaps", []).extend(source.get("coverage_gaps") or [])
+
+
+def coverage_gap(provider_competition_id: int, season_year: int) -> dict[str, int]:
+    return {
+        "provider_competition_id": provider_competition_id,
+        "season_year": season_year,
+    }
+
+
+def archive_sync_status_from_result(result: dict[str, Any]) -> str:
+    synced = result.get("synced") or {}
+    selected_seasons = synced.get("selected_seasons") or []
+    coverage_gaps = synced.get("coverage_gaps") or []
+    fixture_count = int(synced.get("fixtures") or 0)
+    if selected_seasons and coverage_gaps and len(coverage_gaps) >= len(selected_seasons) and fixture_count == 0:
+        return "provider_unavailable"
+    return "complete"
+
+
+def should_recheck_archive_status(
+    status: str,
+    records_changed: int,
+    sync_metadata: dict[str, Any] | None,
+    provider_competition_id: int | None,
+    season_year: int | None,
+) -> bool:
+    if status != "complete" or provider_competition_id is None or season_year is None:
+        return False
+    metadata = sync_metadata or {}
+    return records_changed == 0 and not metadata.get("coverage_gaps")

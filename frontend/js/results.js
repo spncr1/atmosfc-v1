@@ -2,8 +2,6 @@ const resultsGrid = document.querySelector("[data-results]");
 const resultsSummary = document.querySelector("[data-results-summary]") || createResultsSummary();
 const paginationEl = document.querySelector("[data-pagination]");
 const filterForm = document.querySelector("[data-filter-form]");
-const competitionSelect = document.querySelector("[data-competition-select]");
-const seasonSelect = document.querySelector("[data-season-select]");
 const params = new URLSearchParams(window.location.search);
 const PAGE_SIZE = 15;
 let competitionLabels = {};
@@ -14,7 +12,6 @@ init();
 async function init() {
   if (!resultsGrid || !filterForm) return;
   const metadata = await loadMetadata();
-  renderFilterOptions(metadata);
   competitionLabels = labelsByCode(metadata.competitions);
   seasonLabels = labelsByYear(metadata.seasons);
   hydrateForm();
@@ -32,25 +29,6 @@ async function loadMetadata() {
     console.warn("Falling back to bundled filter metadata.", error);
   }
   return fallbackMetadata();
-}
-
-function renderFilterOptions(metadata) {
-  if (competitionSelect) {
-    competitionSelect.innerHTML = [
-      `<option value="">All</option>`,
-      ...metadata.competitions.map((competition) => (
-        `<option value="${escapeAttr(competition.code)}">${escapeHtml(competition.name)}</option>`
-      )),
-    ].join("");
-  }
-  if (seasonSelect) {
-    seasonSelect.innerHTML = [
-      `<option value="">All seasons</option>`,
-      ...metadata.seasons.map((season) => (
-        `<option value="${escapeAttr(season.year)}">${escapeHtml(season.label)}</option>`
-      )),
-    ].join("");
-  }
 }
 
 function labelsByCode(competitions) {
@@ -75,6 +53,10 @@ function fallbackMetadata() {
       { code: "BL1", name: "Bundesliga" },
       { code: "SA", name: "Serie A" },
       { code: "FL1", name: "Ligue 1" },
+      { code: "NED1", name: "Eredivisie" },
+      { code: "POR1", name: "Liga Portugal" },
+      { code: "BEL1", name: "Belgian Pro League" },
+      { code: "TUR1", name: "Turkish Super Lig" },
       { code: "CL", name: "UEFA Champions League" },
       { code: "EL", name: "UEFA Europa League" },
       { code: "UECL", name: "UEFA Conference League" },
@@ -82,6 +64,21 @@ function fallbackMetadata() {
     seasons: [
       { year: 2026, label: "2026/27", is_current: true },
       { year: 2025, label: "2025/26", is_current: false },
+      { year: 2024, label: "2024/25", is_current: false },
+      { year: 2023, label: "2023/24", is_current: false },
+      { year: 2022, label: "2022/23", is_current: false },
+      { year: 2021, label: "2021/22", is_current: false },
+      { year: 2020, label: "2020/21", is_current: false },
+      { year: 2019, label: "2019/20", is_current: false },
+      { year: 2018, label: "2018/19", is_current: false },
+      { year: 2017, label: "2017/18", is_current: false },
+      { year: 2016, label: "2016/17", is_current: false },
+      { year: 2015, label: "2015/16", is_current: false },
+      { year: 2014, label: "2014/15", is_current: false },
+      { year: 2013, label: "2013/14", is_current: false },
+      { year: 2012, label: "2012/13", is_current: false },
+      { year: 2011, label: "2011/12", is_current: false },
+      { year: 2010, label: "2010/11", is_current: false },
     ],
   };
 }
@@ -102,14 +99,14 @@ async function loadResults() {
   clearPagination();
   setStatus(resultsSummary, `Searching ${searchContext(q, competition, season)}...`);
   try {
-    const { matches, pagination } = await apiGet("/matches/search", {
+    const { matches, pagination, notices = [] } = await apiGet("/matches/search", {
       q,
       competition,
       season,
       page,
       page_size: PAGE_SIZE,
     });
-    renderMatches(matches, pagination, q, competition, season);
+    renderMatches(matches, pagination, q, competition, season, notices);
   } catch (error) {
     resultsGrid.innerHTML = "";
     clearPagination();
@@ -119,19 +116,30 @@ async function loadResults() {
 
 function handleFilter(event) {
   event.preventDefault();
+  applyFilters();
+}
+
+function applyFilters() {
   const nextParams = new URLSearchParams(new FormData(filterForm));
   nextParams.set("page", "1");
   window.location.href = `results.html?${nextParams.toString()}`;
 }
 
-function renderMatches(matches, pagination, q, competition, season) {
+function renderMatches(matches, pagination, q, competition, season, notices = []) {
   if (!matches.length) {
     resultsGrid.innerHTML = "";
     clearPagination();
-    setStatus(resultsSummary, `No matches found ${searchContext(q, competition, season)}.`);
+    setSearchStatus(
+      resultsSummary,
+      notices,
+      `No matches found ${searchContext(q, competition, season)}.`,
+    );
     return;
   }
-  setSummary(`${pagination.total} ${pagination.total === 1 ? "result" : "results"} ${searchContext(q, competition, season)}`);
+  setSummary(
+    `${pagination.total} ${pagination.total === 1 ? "result" : "results"} ${searchContext(q, competition, season)}`,
+    notices,
+  );
   resultsGrid.innerHTML = matches.map(matchCard).join("");
   resultsSummary.removeAttribute("aria-busy");
   resultsGrid.querySelectorAll("[data-match]").forEach((button) => {
@@ -155,7 +163,7 @@ function matchCard(match) {
       </span>
       ${scoreContextMarkup(match)}
       <span class="match-row-footer">
-        <small>YouTube comments</small>
+        <small>${youtubeCommentLabel(match)}</small>
         <i>Analyse</i>
       </span>
     </button>
@@ -173,6 +181,19 @@ function scoreDetail(match) {
 function scoreContextMarkup(match) {
   const detail = scoreDetail(match);
   return detail ? `<span class="match-row-score-context">${detail}</span>` : "";
+}
+
+function youtubeCommentLabel(match) {
+  const status = match.youtube_comment_status || "unchecked";
+  const count = Number.isInteger(match.youtube_comment_count) ? match.youtube_comment_count : null;
+  if (status === "complete" && count !== null) {
+    return `${formatNumber(count)} YouTube ${count === 1 ? "comment" : "comments"}`;
+  }
+  if (status === "pending") return "Comments pending";
+  if (status === "no_comments") return "No public comments found";
+  if (status === "unavailable") return "Comments unavailable";
+  if (status === "failed") return "Comment check failed";
+  return "Comments not checked";
 }
 
 function stageWithSeason(match) {
@@ -233,13 +254,38 @@ function teamCrest(src, team) {
   return `<img class="team-crest" src="${src}" alt="" loading="lazy" onerror="this.remove()">`;
 }
 
+function formatNumber(value) {
+  return new Intl.NumberFormat("en").format(value || 0);
+}
+
 function setStatus(target, message) {
   target.setAttribute("aria-busy", "true");
   target.innerHTML = `<p class="status">${message}</p>`;
 }
 
-function setSummary(message) {
-  resultsSummary.innerHTML = `<p class="results-summary__text">${message}</p>`;
+function setSummary(message, notices = []) {
+  resultsSummary.innerHTML = `
+    <p class="results-summary__text">${escapeHtml(message)}</p>
+    ${noticeMarkup(notices)}
+  `;
+  resultsSummary.removeAttribute("aria-busy");
+}
+
+function setSearchStatus(target, notices, fallbackMessage) {
+  target.setAttribute("aria-busy", "true");
+  target.innerHTML = notices.length
+    ? noticeMarkup(notices)
+    : `<p class="status">${escapeHtml(fallbackMessage)}</p>`;
+}
+
+function noticeMarkup(notices) {
+  if (!Array.isArray(notices) || !notices.length) return "";
+  return notices.map((notice) => `
+    <article class="search-notice search-notice--${escapeAttr(notice.type || "info")}">
+      <strong>${escapeHtml(notice.title || "Search notice")}</strong>
+      <p>${escapeHtml(notice.message || "")}</p>
+    </article>
+  `).join("");
 }
 
 function renderPagination(pagination) {

@@ -120,6 +120,30 @@
   font-weight: 900;
 }
 
+.search-notice {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 16px 18px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid rgba(200, 255, 71, 0.36);
+  border-radius: 14px;
+}
+
+.search-notice strong {
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.search-notice p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 .match-list {
   display: grid;
   gap: 18px;
