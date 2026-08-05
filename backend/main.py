@@ -9,11 +9,19 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import get_settings
-from backend.models.schemas import AnalyseRequest, AnalysisResponse, AnalyseMeta, MatchSearchResponse, MetadataResponse
+from backend.database.session import get_sessionmaker
+from backend.models.schemas import (
+    AnalyseRequest,
+    AnalysisResponse,
+    AnalyseMeta,
+    MatchSearchResponse,
+    MetadataResponse,
+    ReactionIntensityBucket,
+)
+from backend.repositories import football_data as repo
 from backend.services import football_api
 from backend.services.football_api import FootballDataError
 from backend.services.metadata import MetadataError, frontend_metadata
-from backend.services.background_jobs import queue_youtube_comment_count_jobs
 from backend.services.matches import (
     MatchDataError,
     analysis_match,
@@ -69,7 +77,6 @@ async def get_recent_matches(
 
     try:
         matches = await recent_matches(limit=limit, competition=competition)
-        await queue_youtube_comment_count_jobs(matches)
         return {"matches": matches}
     except MatchDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -95,7 +102,6 @@ async def get_search_matches(
         start = (current_page - 1) * page_size
         end = start + page_size
         page_matches = matches[start:end]
-        await queue_youtube_comment_count_jobs(page_matches)
         return {
             "matches": page_matches,
             "pagination": {
@@ -136,8 +142,14 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
         try:
             video_comments = fetch_match_comments(match)
         except YouTubeError as exc:
-            await cache_youtube_comment_error(match, exc)
-            raise
+            cache_result = await cache_youtube_comment_error(match, exc)
+            match.youtube_comment_status = cache_result.status
+            match.youtube_comment_count = cache_result.raw_comment_count
+            match.youtube_analysed_comment_count = cache_result.analysed_comment_count
+            cached_response = await cached_analysis_response(match, events)
+            if cached_response is not None:
+                return cached_response
+            return event_fallback_analysis_response(match, events)
         kickoff = datetime.fromisoformat(match.date.replace("Z", "+00:00")).astimezone(timezone.utc)
         source_video_count = len({comment.permalink for comment in video_comments.comments}) or 1
         buckets, reaction_intensity, half_split, top_comments, peak_minute, peak_window, overall_vibe, crowd_energy = analyse_comments(
@@ -150,7 +162,7 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
         match.youtube_comment_status = cache_result.status
         match.youtube_comment_count = cache_result.raw_comment_count
         match.youtube_analysed_comment_count = cache_result.analysed_comment_count
-        return AnalysisResponse(
+        response = AnalysisResponse(
             match=match,
             events=events,
             sentiment_buckets=buckets,
@@ -165,14 +177,15 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
                 overall_vibe=overall_vibe,
                 crowd_energy=crowd_energy,
                 youtube_video_url=video_comments.url,
+                analysis_mode="youtube_sentiment",
             ),
         )
+        await cache_analysis_response(match, response)
+        return response
     except MatchDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except FootballDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except YouTubeError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 def _score_margin(raw_match: dict) -> int:
@@ -185,5 +198,172 @@ def _summary_score_margin(score: str | None) -> int:
     home, away = score.split("-", maxsplit=1)
     try:
         return abs(int(home.strip()) - int(away.strip()))
+    except ValueError:
+        return 0
+
+
+async def cache_analysis_response(match, response: AnalysisResponse) -> None:
+    provider_fixture_id = provider_fixture_id_from_match(match)
+    if provider_fixture_id is None:
+        return
+
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        fixture = await repo.fixture_by_provider_fixture_id(session, provider_fixture_id)
+        if fixture is None:
+            return
+        await repo.upsert_analysis_cache(
+            session,
+            fixture,
+            status="complete",
+            payload=response.model_dump(mode="json"),
+            source_video_count=response.meta.source_video_count,
+            total_comments=response.meta.total_comments,
+        )
+        await session.commit()
+
+
+async def cached_analysis_response(match, events) -> AnalysisResponse | None:
+    provider_fixture_id = provider_fixture_id_from_match(match)
+    if provider_fixture_id is None:
+        return None
+
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        fixture = await repo.fixture_by_provider_fixture_id(session, provider_fixture_id)
+        if fixture is None:
+            return None
+        cache = await repo.analysis_cache_for_fixture(session, fixture)
+        if cache is None or cache.status != "complete":
+            return None
+        payload = cache.payload
+
+    response = AnalysisResponse.model_validate(payload)
+    response.match = match
+    response.events = events
+    response.meta.analysis_mode = "cached_youtube_sentiment"
+    return response
+
+
+def provider_fixture_id_from_match(match) -> int | None:
+    try:
+        return int(match.id)
+    except (TypeError, ValueError):
+        return None
+
+
+def event_fallback_analysis_response(match, events) -> AnalysisResponse:
+    reaction_intensity = event_intensity_buckets(events)
+    peak_window = event_peak_window(reaction_intensity)
+    return AnalysisResponse(
+        match=match,
+        events=events,
+        sentiment_buckets=[],
+        reaction_intensity=reaction_intensity,
+        top_comments=[],
+        half_split={
+            "first": {"pos": 0, "neg": 0, "neu": 0},
+            "second": {"pos": 0, "neg": 0, "neu": 0},
+        },
+        meta=AnalyseMeta(
+            total_comments=0,
+            peak_minute=0,
+            peak_window=peak_window,
+            source_video_count=0,
+            overall_vibe=event_fallback_vibe(match, events),
+            crowd_energy=event_fallback_energy(events),
+            youtube_video_url=None,
+            analysis_mode="event_fallback",
+        ),
+    )
+
+
+def event_intensity_buckets(events) -> list[ReactionIntensityBucket]:
+    buckets: list[ReactionIntensityBucket] = []
+    for start in [0, 15, 30, 45, 60, 75]:
+        end = start + 15
+        window_events = [
+            event
+            for event in events
+            if start <= int(getattr(event, "minute", 0) or 0) < end
+            or (end == 90 and int(getattr(event, "minute", 0) or 0) >= 90)
+        ]
+        intensity = min(100, sum(event_intensity_weight(getattr(event, "type", "")) for event in window_events))
+        buckets.append(
+            ReactionIntensityBucket(
+                hour_offset=start,
+                intensity=float(intensity),
+                sentiment=0.0,
+                comment_count=len(window_events),
+            )
+        )
+    return buckets
+
+
+def event_intensity_weight(event_type: str) -> int:
+    weights = {
+        "goal": 40,
+        "penalty-goal": 44,
+        "own-goal": 42,
+        "missed-penalty": 36,
+        "red-card": 32,
+        "var": 26,
+        "penalty": 24,
+        "yellow-card": 14,
+        "substitution": 8,
+    }
+    return weights.get(event_type, 8)
+
+
+def event_peak_window(buckets: list[ReactionIntensityBucket]) -> dict[str, int]:
+    if not buckets:
+        return {"hour_start": 0, "hour_end": 15}
+    peak = max(buckets, key=lambda bucket: bucket.intensity)
+    return {"hour_start": peak.hour_offset, "hour_end": min(90, peak.hour_offset + 15)}
+
+
+def event_fallback_vibe(match, events) -> dict[str, str]:
+    total_goals = total_score_goals(match)
+    event_count = len(events)
+    if total_goals >= 6 and _summary_score_margin(match.score) <= 1:
+        label = "Thriller"
+    elif total_goals >= 5:
+        label = "Chaotic"
+    elif total_goals >= 3 or event_count >= 12:
+        label = "Lively"
+    elif total_goals == 0:
+        label = "Cagey"
+    else:
+        label = "Competitive"
+    return {
+        "label": label,
+        "subtext": "Estimated from goals and key match events",
+    }
+
+
+def event_fallback_energy(events) -> dict[str, str]:
+    if not events:
+        return {
+            "label": "Timeline only",
+            "subtext": "No key events were available for this match",
+        }
+    if len(events) >= 14:
+        label = "High event load"
+    elif len(events) >= 7:
+        label = "Active timeline"
+    else:
+        label = "Low event load"
+    return {
+        "label": label,
+        "subtext": "Based on the match timeline, not YouTube comments",
+    }
+
+
+def total_score_goals(match) -> int:
+    if not match.score or "-" not in match.score:
+        return 0
+    home, away = match.score.split("-", maxsplit=1)
+    try:
+        return int(home.strip()) + int(away.strip())
     except ValueError:
         return 0

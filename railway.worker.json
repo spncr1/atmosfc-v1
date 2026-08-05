@@ -4,7 +4,7 @@
     "builder": "RAILPACK"
   },
   "deploy": {
-    "startCommand": "sh -c 'python -m alembic upgrade head && while true; do python -m backend.scripts.run_background_jobs --limit 5 --type youtube_comment_count; sleep 10; done'",
+    "startCommand": "sh -c 'python -m alembic upgrade head && while true; do echo \"YouTube worker paused\"; sleep 3600; done'",
     "healthcheckPath": null,
     "healthcheckTimeout": null,
     "restartPolicyType": "ON_FAILURE",

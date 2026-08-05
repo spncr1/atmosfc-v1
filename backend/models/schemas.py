@@ -98,6 +98,7 @@ class MatchEvent(BaseModel):
     # A timeline event displayed beside sentiment.
 
     minute: int
+    display_minute: Optional[str] = None
     type: str
     description: str
 
@@ -154,6 +155,7 @@ class AnalyseMeta(BaseModel):
     overall_vibe: Dict[str, str]
     crowd_energy: Dict[str, str]
     youtube_video_url: Optional[str] = None
+    analysis_mode: str = "youtube_sentiment"
 
 
 class AnalysisResponse(BaseModel):

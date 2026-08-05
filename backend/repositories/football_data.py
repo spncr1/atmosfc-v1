@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 import re
 import unicodedata
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, joinedload
 
 from backend.database.models import (
+    AnalysisCache,
     ArchiveSyncStatus,
     BackgroundJob,
     Competition,
@@ -367,7 +368,7 @@ async def upsert_youtube_comment_cache(
     cache = await session.scalar(
         select(YouTubeCommentCache).where(YouTubeCommentCache.fixture_id == fixture.id)
     )
-    if checked_at is None and status in {"complete", "no_comments", "unavailable", "failed"}:
+    if checked_at is None and status in {"complete", "no_comments", "unavailable", "failed", "rate_limited"}:
         checked_at = datetime.now(timezone.utc)
 
     values = {
@@ -401,6 +402,50 @@ async def youtube_comment_cache_for_fixture(
     )
 
 
+async def upsert_analysis_cache(
+    session: AsyncSession,
+    fixture: Fixture,
+    *,
+    status: str,
+    payload: dict[str, Any],
+    source_video_count: int | None = None,
+    total_comments: int | None = None,
+    checked_at: datetime | None = None,
+    error_message: str | None = None,
+) -> AnalysisCache:
+    cache = await session.scalar(
+        select(AnalysisCache).where(AnalysisCache.fixture_id == fixture.id)
+    )
+    if checked_at is None and status in {"complete", "failed"}:
+        checked_at = datetime.now(timezone.utc)
+
+    values = {
+        "fixture_id": fixture.id,
+        "status": status,
+        "payload": payload,
+        "source_video_count": source_video_count,
+        "total_comments": total_comments,
+        "checked_at": checked_at,
+        "error_message": error_message,
+    }
+    if cache is None:
+        cache = AnalysisCache(**values)
+        session.add(cache)
+    else:
+        _assign(cache, values)
+    await session.flush()
+    return cache
+
+
+async def analysis_cache_for_fixture(
+    session: AsyncSession,
+    fixture: Fixture,
+) -> AnalysisCache | None:
+    return await session.scalar(
+        select(AnalysisCache).where(AnalysisCache.fixture_id == fixture.id)
+    )
+
+
 async def fixture_by_provider_fixture_id(
     session: AsyncSession,
     provider_fixture_id: int,
@@ -410,6 +455,7 @@ async def fixture_by_provider_fixture_id(
         .options(
             joinedload(Fixture.youtube_comment_cache),
             joinedload(Fixture.event_sync_status),
+            joinedload(Fixture.analysis_cache),
         )
         .where(
             Fixture.provider == PROVIDER,
@@ -480,10 +526,51 @@ async def enqueue_background_job(
                 "available_at": datetime.now(timezone.utc),
             },
         )
+    elif job.status == "running" and is_stale_background_job(job):
+        _assign(
+            job,
+            {
+                **values,
+                "status": "queued",
+                "started_at": None,
+                "finished_at": None,
+                "error_message": "Recovered stale running job.",
+                "available_at": datetime.now(timezone.utc),
+            },
+        )
     elif job.status == "queued":
         _assign(job, values)
     await session.flush()
     return job
+
+
+async def recover_stale_background_jobs(
+    session: AsyncSession,
+    *,
+    job_types: list[str] | None = None,
+    stale_after_minutes: int = 15,
+) -> int:
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_after_minutes)
+    query = (
+        update(BackgroundJob)
+        .where(
+            BackgroundJob.status == "running",
+            BackgroundJob.started_at.is_not(None),
+            BackgroundJob.started_at < cutoff,
+        )
+        .values(
+            status="queued",
+            started_at=None,
+            finished_at=None,
+            error_message="Recovered stale running job.",
+            available_at=datetime.now(timezone.utc),
+        )
+    )
+    if job_types:
+        query = query.where(BackgroundJob.job_type.in_(set(job_types)))
+    result = await session.execute(query)
+    await session.flush()
+    return int(result.rowcount or 0)
 
 
 async def queued_background_jobs(
@@ -937,6 +1024,7 @@ async def table_counts(session: AsyncSession) -> dict[str, int]:
         "fixture_events": FixtureEvent,
         "fixture_event_sync_status": FixtureEventSyncStatus,
         "youtube_comment_cache": YouTubeCommentCache,
+        "analysis_cache": AnalysisCache,
         "background_jobs": BackgroundJob,
         "sync_runs": SyncRun,
         "archive_sync_status": ArchiveSyncStatus,
@@ -963,6 +1051,15 @@ def archive_sync_scope_key(
     competition_part = str(provider_competition_id) if provider_competition_id is not None else "*"
     season_part = str(season_year) if season_year is not None else "*"
     return f"{scope_type}|teams={teams_part}|competition={competition_part}|season={season_part}"
+
+
+def is_stale_background_job(job: BackgroundJob, *, stale_after_minutes: int = 15) -> bool:
+    if job.started_at is None:
+        return False
+    started_at = job.started_at
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    return started_at < datetime.now(timezone.utc) - timedelta(minutes=stale_after_minutes)
 
 
 def normalise_provider_team_ids(provider_team_ids: list[int] | tuple[int, ...] | None) -> list[int]:

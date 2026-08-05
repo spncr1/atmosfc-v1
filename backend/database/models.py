@@ -158,6 +158,11 @@ class Fixture(Base, TimestampMixin):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    analysis_cache: Mapped[AnalysisCache | None] = relationship(
+        back_populates="fixture",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     __table_args__ = (
         UniqueConstraint("provider", "provider_fixture_id", name="uq_fixtures_provider_id"),
@@ -235,6 +240,27 @@ class YouTubeCommentCache(Base, TimestampMixin):
         UniqueConstraint("fixture_id", name="uq_youtube_comment_cache_fixture"),
         Index("ix_youtube_comment_cache_status", "status"),
         Index("ix_youtube_comment_cache_checked_at", "checked_at"),
+    )
+
+
+class AnalysisCache(Base, TimestampMixin):
+    __tablename__ = "analysis_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fixture_id: Mapped[int] = mapped_column(ForeignKey("fixtures.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="complete")
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    source_video_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_comments: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    fixture: Mapped[Fixture] = relationship(back_populates="analysis_cache")
+
+    __table_args__ = (
+        UniqueConstraint("fixture_id", name="uq_analysis_cache_fixture"),
+        Index("ix_analysis_cache_status", "status"),
+        Index("ix_analysis_cache_checked_at", "checked_at"),
     )
 
 

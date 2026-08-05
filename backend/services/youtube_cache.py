@@ -121,6 +121,8 @@ def analysed_comment_count(match: MatchSummary, batch: YouTubeCommentBatch) -> i
 
 def youtube_error_status(message: str) -> str:
     clean = message.lower()
+    if "429" in clean or "quota" in clean or "rate limit" in clean or "rate-limit" in clean:
+        return "rate_limited"
     if "no comments" in clean or "comments disabled" in clean:
         return "no_comments"
     if "no youtube videos" in clean:

@@ -58,6 +58,12 @@ TEAM_ALIASES = {
 }
 
 
+TEAM_ALIAS_PROVIDER_IDS = {
+    "inter": (505,),
+    "inter milan": (505,),
+}
+
+
 def parse_search_intent(
     query: str,
     *,
@@ -164,6 +170,10 @@ async def resolve_team_search(intent: SearchIntent, session: Any, client: Any | 
 
     if not intent.should_resolve_team:
         return ResolvedTeamSearch(provider_team_ids=[], query_terms=intent.query_terms)
+
+    known_team_ids = TEAM_ALIAS_PROVIDER_IDS.get(intent.normalised_query)
+    if known_team_ids:
+        return ResolvedTeamSearch(provider_team_ids=list(known_team_ids), query_terms=[])
 
     from backend.repositories import football_data as repo
 

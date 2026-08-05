@@ -13,6 +13,8 @@ const summaryEl = document.querySelector("[data-summary]");
 const eventsEl = document.querySelector("[data-events]");
 const commentsEl = document.querySelector("[data-comments]");
 const legendEl = document.querySelector("[data-chart-legend]");
+const chartTitleEl = document.querySelector(".analysis-chart-card .analysis-card-label");
+const chartWrapEl = document.querySelector(".analysis-chart-wrap");
 const backLinkEl = document.querySelector("[data-back-link]");
 const params = new URLSearchParams(window.location.search);
 let pulseChart;
@@ -31,7 +33,7 @@ async function init() {
   }
 
   try {
-    setStatus("Analysing YouTube match comments...");
+    setStatus("Analysing match...");
     const analysis = await apiPost("/analyse", { match_id: matchId });
     setStatus("");
     renderAnalysis(analysis);
@@ -43,9 +45,9 @@ async function init() {
 function renderAnalysis(data) {
   renderMatchHeader(data.match);
   renderSummary(data.meta);
-  renderChart(data.reaction_intensity || []);
+  renderChart(data.reaction_intensity || [], data.meta || {});
   renderEvents(data.events || [], data.match?.event_feed_status);
-  renderComments(data.top_comments || [], data.meta.youtube_video_url);
+  renderComments(data.top_comments || [], data.meta.youtube_video_url, data.match?.youtube_comment_status);
 }
 
 function renderMatchHeader(match) {
@@ -94,11 +96,22 @@ function displayTeamName(match, side) {
 
 function renderSummary(meta) {
   const peak = meta.peak_window || { hour_start: 0, hour_end: 1 };
+  const isEventFallback = meta.analysis_mode === "event_fallback";
+  const isCached = meta.analysis_mode === "cached_youtube_sentiment";
+  const peakLabel = isEventFallback
+    ? `Minutes ${peak.hour_start} – ${peak.hour_end}`
+    : `Hours ${peak.hour_start} – ${peak.hour_end}`;
+  const peakSubtext = isEventFallback ? "Highest event activity window" : "Strongest reaction window";
+  const commentsSubtext = isEventFallback
+    ? "YouTube unavailable; using match events"
+    : isCached
+      ? "Loaded from saved YouTube analysis"
+      : "First 24 hours after full time";
   summaryEl.innerHTML = `
     ${metricCard("Overall vibe", meta.overall_vibe?.label || "Forgettable", meta.overall_vibe?.subtext || "", true)}
     ${metricCard("Crowd energy", meta.crowd_energy?.label || "Quiet", meta.crowd_energy?.subtext || "", true)}
-    ${metricCard("Peak reaction window", `Hours ${peak.hour_start} – ${peak.hour_end}`, "Highest volume post match", false)}
-    ${metricCard("Comments analysed", formatNumber(meta.total_comments), "First 24 hours after full time", false)}
+    ${metricCard(isEventFallback ? "Peak event window" : "Peak reaction window", peakLabel, peakSubtext, false)}
+    ${metricCard("Comments analysed", formatNumber(meta.total_comments), commentsSubtext, false)}
   `;
 }
 
@@ -112,18 +125,30 @@ function metricCard(label, value, subtext, accent) {
   `;
 }
 
-function renderChart(buckets) {
+function renderChart(buckets, meta = {}) {
+  const isEventFallback = meta.analysis_mode === "event_fallback";
+  if (chartTitleEl) {
+    chartTitleEl.textContent = isEventFallback
+      ? "Atmos reaction intensity - 90 minutes"
+      : "Atmos reaction intensity - 24hrs after full time";
+  }
+  restoreChartCanvas(isEventFallback);
   const ctx = document.querySelector("#pulseChart");
   if (!ctx) return;
   if (pulseChart) pulseChart.destroy();
   if (!window.Chart) {
-    showChartFallback("Reaction chart could not load.");
+    showChartFallback("Atmos reaction intensity chart could not load.");
     return;
   }
   if (!buckets.length) {
-    showChartFallback("Reaction chart unavailable for this match.");
+    showChartFallback("Atmos reaction intensity chart unavailable for this match.");
     return;
   }
+  const xMax = isEventFallback ? 90 : 24;
+  const xStep = isEventFallback ? 15 : 3;
+  const xTitle = isEventFallback ? "Match minute" : "Hours after full time";
+  const datasetLabel = "Atmos reaction intensity";
+  const yTitle = "Reaction intensity score";
 
   const peakIndex = buckets.reduce((best, bucket, index) => {
     if (best === -1) return index;
@@ -137,7 +162,7 @@ function renderChart(buckets) {
   }));
   const finalBucket = buckets[buckets.length - 1];
   chartPoints.push({
-    x: 24,
+    x: xMax,
     y: finalBucket.intensity,
     bucketIndex: buckets.length - 1,
     terminal: true,
@@ -148,7 +173,7 @@ function renderChart(buckets) {
     data: {
       datasets: [
         {
-          label: "Reaction intensity",
+          label: datasetLabel,
           data: chartPoints,
           borderColor: "#C8FF47",
           borderWidth: 2.5,
@@ -175,20 +200,21 @@ function renderChart(buckets) {
         y: {
           min: 0,
           max: 100,
-          title: { display: true, text: "Reaction intensity", color: "#505058" },
+          title: { display: true, text: yTitle, color: "#505058" },
           ticks: { color: "#505058", font: { size: 11 } },
           grid: { color: "#242428" },
         },
         x: {
           type: "linear",
           min: 0,
-          max: 24,
-          title: { display: true, text: "Hours after full time", color: "#505058" },
+          max: xMax,
+          title: { display: true, text: xTitle, color: "#505058" },
           ticks: {
             color: "#505058",
             font: { size: 11 },
-            stepSize: 3,
+            stepSize: xStep,
             callback(value) {
+              if (isEventFallback) return value === 0 ? "KO" : `${value}'`;
               return value === 0 ? "FT" : `${value}h`;
             },
           },
@@ -198,45 +224,90 @@ function renderChart(buckets) {
       plugins: {
         legend: { display: false },
         tooltip: {
+          padding: {
+            top: 10,
+            right: 14,
+            bottom: 10,
+            left: 14,
+          },
+          boxPadding: 6,
+          titleMarginBottom: 8,
+          bodySpacing: 5,
+          titleFont: {
+            size: 13,
+            weight: "800",
+          },
+          bodyFont: {
+            size: 13,
+            weight: "600",
+          },
           callbacks: {
+            title(items) {
+              const point = items[0]?.raw;
+              const bucket = buckets[point?.bucketIndex];
+              if (!bucket) return "";
+              return intensityWindowLabel(bucket, isEventFallback);
+            },
             label(context) {
               const bucket = buckets[context.raw.bucketIndex];
-              return `Intensity ${Math.round(bucket.intensity)}`;
+              return `Atmos reaction score: ${Math.round(bucket.intensity)} / 100`;
             },
             afterLabel(context) {
               const bucket = buckets[context.raw.bucketIndex];
-              return [
-                `VADER sentiment score: ${bucket.sentiment.toFixed(2)} (${sentimentLabel(bucket.sentiment).toLowerCase()})`,
-                `${formatNumber(bucket.comment_count)} comments in this window`,
-              ];
+              const lines = [intensityDataLabel(bucket, isEventFallback)];
+              if (context.raw.bucketIndex === peakIndex) lines.push("Peak intensity window");
+              return lines;
             },
           },
         },
       },
     },
-    plugins: [reactionZonePlugin],
+    plugins: [intensityZonePlugin],
   });
 
   legendEl.innerHTML = `
-    <span><i class="legend-line"></i>Reaction intensity</span>
-    <span><i class="legend-fill-positive"></i>High reaction zone</span>
-    <span><i class="legend-fill-negative"></i>Low reaction zone</span>
+    <span><i class="legend-line"></i>Atmos reaction intensity</span>
+    <span><i class="legend-fill-positive"></i>High intensity zone</span>
+    <span><i class="legend-fill-negative"></i>Low intensity zone</span>
     <span><i class="legend-dot"></i>Peak window</span>
   `;
 }
 
+function intensityWindowLabel(bucket, isEventFallback) {
+  const start = Number(bucket.hour_offset) || 0;
+  const end = start + (isEventFallback ? 15 : 1);
+  if (isEventFallback) {
+    return `${start}'–${Math.min(end, 90)}'`;
+  }
+  return start === 0 ? "FT" : `${start}h after FT`;
+}
+
+function intensityDataLabel(bucket, isEventFallback) {
+  const count = formatNumber(bucket.comment_count);
+  return isEventFallback
+    ? `${count} key events in this window`
+    : `${count} comments analysed`;
+}
+
 function showChartFallback(message) {
-  const wrap = document.querySelector(".analysis-chart-wrap");
-  if (wrap) {
-    wrap.innerHTML = `<p class="analysis-empty">${escapeHtml(message)}</p>`;
+  if (chartWrapEl) {
+    chartWrapEl.innerHTML = `<p class="analysis-empty">${escapeHtml(message)}</p>`;
   }
   if (legendEl) {
     legendEl.innerHTML = "";
   }
 }
 
-const reactionZonePlugin = {
-  id: "reactionZone",
+function restoreChartCanvas(isEventFallback = false) {
+  if (!chartWrapEl || chartWrapEl.querySelector("#pulseChart")) return;
+  chartWrapEl.innerHTML = `
+    <canvas id="pulseChart" role="img" aria-label="${isEventFallback ? "Line chart showing Atmos reaction intensity over 90 minutes" : "Line chart showing Atmos reaction intensity over the 24 hours after full time"}">
+    </canvas>
+  `;
+}
+
+const intensityZonePlugin = {
+  id: "intensityZone",
   beforeDatasetsDraw(chart) {
     const { ctx, chartArea, scales } = chart;
     if (!chartArea) return;
@@ -257,7 +328,7 @@ function renderEvents(items, status = "unchecked") {
   eventsEl.innerHTML = items.length
     ? items.map((event) => `
       <li>
-        <strong>${event.minute}'</strong>
+        <strong>${escapeHtml(event.display_minute || `${event.minute}'`)}</strong>
         <span>${escapeHtml(event.description)}</span>
         <em class="event-pill event-pill-${event.type}">${escapeHtml(eventLabel(event.type))}</em>
       </li>
@@ -265,7 +336,7 @@ function renderEvents(items, status = "unchecked") {
     : `<li class="analysis-empty">${escapeHtml(fallback)}</li>`;
 }
 
-function renderComments(items, videoUrl) {
+function renderComments(items, videoUrl, status = "unchecked") {
   commentsEl.innerHTML = items.length
     ? items.slice(0, 3).map((item) => {
       const sourceUrl = item.source_url || videoUrl;
@@ -278,7 +349,15 @@ function renderComments(items, videoUrl) {
       </article>
     `;
     }).join("")
-    : `<p class="analysis-empty">No usable YouTube comments found for this match.</p>`;
+    : `<p class="analysis-empty">${escapeHtml(emptyCommentMessage(status))}</p>`;
+}
+
+function emptyCommentMessage(status) {
+  if (status === "rate_limited") return "YouTube comment analysis is temporarily rate limited.";
+  if (status === "unavailable") return "No suitable YouTube highlight videos found.";
+  if (status === "no_comments") return "No public comments found in selected highlight videos.";
+  if (status === "failed") return "YouTube comment analysis is unavailable right now.";
+  return "No usable YouTube comments found for this match.";
 }
 
 function setCrest(target, src) {
@@ -337,15 +416,15 @@ function shortTeamName(name) {
     .replace("Paris Saint-Germain", "PSG");
 }
 
-function sentimentLabel(score) {
-  if (score >= 0.05) return "Positive";
-  if (score <= -0.05) return "Negative";
-  return "Mixed";
-}
-
 function eventLabel(type) {
+  if (type === "penalty-goal") return "Penalty goal";
+  if (type === "missed-penalty") return "Missed penalty";
+  if (type === "own-goal") return "Own goal";
   if (type === "yellow-card") return "Yellow card";
   if (type === "red-card") return "Red card";
+  if (type === "substitution") return "Substitution";
+  if (type === "var") return "VAR";
+  if (type === "penalty") return "Penalty";
   return "Goal";
 }
 

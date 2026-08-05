@@ -263,13 +263,48 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.25rem;
+  align-items: stretch;
+}
+
+.analysis-side-card {
+  display: flex;
+  flex-direction: column;
+  height: 340px;
+  min-height: 0;
+}
+
+.analysis-events-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.analysis-events-card::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 28px;
+  border-radius: 0 0 10px 10px;
+  background: radial-gradient(
+    ellipse at bottom,
+    rgba(200, 255, 71, 0.22),
+    rgba(200, 255, 71, 0.08) 42%,
+    rgba(200, 255, 71, 0) 76%
+  );
+  pointer-events: none;
 }
 
 .analysis-event-list {
   display: grid;
+  align-content: start;
+  flex: 1 1 auto;
   padding: 0;
   margin: 2px 0 0;
   list-style: none;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .analysis-event-list li {
@@ -309,6 +344,18 @@
   background: rgba(200, 255, 71, 0.13);
 }
 
+.event-pill-penalty-goal,
+.event-pill-own-goal {
+  color: var(--accent);
+  background: rgba(200, 255, 71, 0.13);
+}
+
+.event-pill-missed-penalty,
+.event-pill-penalty {
+  color: var(--warning);
+  background: rgba(239, 159, 39, 0.13);
+}
+
 .event-pill-yellow-card {
   color: var(--warning);
   background: rgba(239, 159, 39, 0.13);
@@ -319,9 +366,24 @@
   background: rgba(255, 77, 77, 0.13);
 }
 
+.event-pill-substitution {
+  color: var(--muted);
+  background: rgba(80, 80, 88, 0.18);
+}
+
+.event-pill-var {
+  color: #b9a7ff;
+  background: rgba(126, 97, 255, 0.18);
+}
+
 .analysis-comment-list {
   display: grid;
+  align-content: start;
+  flex: 1 1 auto;
   margin-top: 3px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .analysis-comment {

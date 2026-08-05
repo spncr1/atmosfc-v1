@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Literal
 
 from sqlalchemy import or_, select
@@ -537,6 +538,55 @@ def team_code(team: Team) -> str | None:
     return value.strip().upper() if isinstance(value, str) and value.strip() else None
 
 
+EVENT_TEAM_SHORT_NAMES = {
+    "Arsenal": "Arsenal",
+    "Atalanta": "Atalanta",
+    "Bayern München": "Bayern",
+    "Bayern Munich": "Bayern",
+    "FC Bayern München": "Bayern",
+    "FC Internazionale Milano": "INT",
+    "Inter": "INT",
+    "Internazionale": "INT",
+    "Liverpool": "Liverpool",
+    "Manchester City": "Man City",
+    "Manchester United": "Man United",
+    "Olympique de Marseille": "Marseille",
+    "Paris Saint Germain": "PSG",
+    "Paris Saint-Germain": "PSG",
+    "Paris Saint-Germain FC": "PSG",
+    "Real Madrid": "Real Madrid",
+}
+
+
+def event_team_label(team: Team | None) -> str | None:
+    if team is None:
+        return None
+    return EVENT_TEAM_SHORT_NAMES.get(team.name) or team_code(team) or short_team_label(team.name)
+
+
+def event_team_suffix(team: Team | None) -> str:
+    label = event_team_label(team)
+    return f" ({label})" if label else ""
+
+
+def short_team_label(name: str | None) -> str | None:
+    clean = " ".join(str(name or "").split())
+    if not clean:
+        return None
+    return (
+        clean.replace("Paris Saint-Germain", "PSG")
+        .replace("Paris Saint Germain", "PSG")
+        .replace("FC Bayern München", "Bayern")
+        .replace("Bayern München", "Bayern")
+        .replace("FC Internazionale Milano", "Inter")
+        .replace("Internazionale", "Inter")
+        .removeprefix("FC ")
+        .removesuffix(" FC")
+        .removesuffix(" AFC")
+        .removesuffix(" CF")
+    )
+
+
 def score_label(home: int | None, away: int | None) -> str | None:
     if home is None or away is None:
         return None
@@ -561,7 +611,21 @@ def penalty_score_label(fixture: Fixture) -> str | None:
 
 
 def venue_label(fixture: Fixture) -> str | None:
-    return " - ".join(part for part in [fixture.venue_name, fixture.venue_city] if part) or None
+    stadium = clean_stadium_name(fixture.venue_name)
+    if fixture.venue_name and fixture.venue_city:
+        return f"{stadium}, {fixture.venue_city}"
+    return stadium or fixture.venue_city
+
+
+def clean_stadium_name(name: str | None) -> str | None:
+    clean = " ".join(str(name or "").split())
+    if not clean:
+        return None
+    replacements = {
+        "The American Express Community Stadium": "Amex Stadium",
+        "Stadio Giuseppe Meazza": "San Siro",
+    }
+    return replacements.get(clean, clean)
 
 
 def app_status(status_short: str | None) -> str | None:
@@ -608,6 +672,9 @@ def display_round_name(round_name: str | None) -> str | None:
         return None
 
     lower = clean.lower()
+    if lower.startswith("regular season -"):
+        matchday = clean.split("-", maxsplit=1)[1].strip()
+        return f"Matchday {matchday}" if matchday else "Regular Season"
     replacements = {
         "16th finals": "Round of 32",
         "8th finals": "Round of 16",
@@ -616,8 +683,18 @@ def display_round_name(round_name: str | None) -> str | None:
     }
     if lower in replacements:
         return replacements[lower]
+    group_match = re.match(r"^group\s+([a-z])\s+-\s+(\d+)$", clean, flags=re.IGNORECASE)
+    if group_match:
+        group, matchday = group_match.groups()
+        return f"Group {group.upper()} - MD{matchday}"
+    group_stage_match = re.match(r"^group\s+stage\s+-\s+(\d+)$", clean, flags=re.IGNORECASE)
+    if group_stage_match:
+        return f"Group Stage - MD{group_stage_match.group(1)}"
     if lower.startswith("group stage"):
         return clean.replace("Group stage", "Group Stage").replace("group stage", "Group Stage")
+    if lower.startswith("league stage -"):
+        matchday = clean.split("-", maxsplit=1)[1].strip()
+        return f"League Phase - MD{matchday}" if matchday else "League Phase"
     return clean
 
 
@@ -696,26 +773,109 @@ def fixture_events_to_summary(events: list[FixtureEvent]) -> list[MatchEvent]:
     return [
         MatchEvent(
             minute=event.minute or 0,
+            display_minute=event_minute_label(event),
             type=event_type(event),
             description=event_description(event),
         )
         for event in sorted(events, key=lambda item: ((item.minute or 0), (item.extra_minute or 0), item.id))
-        if event.type in {"Goal", "Card"}
+        if is_key_event(event)
     ]
 
 
+def event_minute_label(event: FixtureEvent) -> str:
+    minute = event.minute or 0
+    extra = event.extra_minute or 0
+    if extra > 0:
+        return f"{minute}'+{extra}'"
+    return f"{minute}'"
+
+
+def is_key_event(event: FixtureEvent) -> bool:
+    event_type_clean = (event.type or "").strip().lower()
+    detail = (event.detail or "").strip().lower()
+    if event_type_clean in {"goal", "card", "subst", "var"}:
+        return True
+    if "penalty" in detail or "own goal" in detail:
+        return True
+    return False
+
+
 def event_type(event: FixtureEvent) -> str:
-    if event.type == "Goal":
+    event_type_clean = (event.type or "").strip().lower()
+    detail = (event.detail or "").strip().lower()
+    comments = (event.comments or "").strip().lower()
+    if event_type_clean == "goal":
+        if "own goal" in detail:
+            return "own-goal"
+        if "missed penalty" in detail or "penalty missed" in detail:
+            return "missed-penalty"
+        if "penalty" in detail:
+            return "penalty-goal"
         return "goal"
-    detail = (event.detail or "").lower()
-    if "red" in detail:
+    if event_type_clean == "subst":
+        return "substitution"
+    if event_type_clean == "var":
+        return "var"
+    if event_type_clean == "card" and "red" in detail:
         return "red-card"
+    if "penalty" in detail or "penalty" in comments:
+        return "penalty"
     return "yellow-card"
 
 
 def event_description(event: FixtureEvent) -> str:
-    minute = f"+{event.extra_minute}" if event.extra_minute else ""
-    team = f" ({event.team.name})" if event.team else ""
     player = event.player_name or "Unknown player"
-    detail = event.detail or event.type
-    return f"{player}{minute} - {detail}{team}"
+    assist = event.assist_player_name
+    event_kind = event_type(event)
+    team_suffix = event_team_suffix(event.team)
+
+    if event_kind == "substitution":
+        if assist:
+            return f"{player} OUT - {assist} IN{team_suffix}"
+        return f"{player} OUT{team_suffix}"
+
+    if event_kind in {"goal", "penalty-goal", "own-goal"}:
+        assist_text = f" - Assist: {assist}" if assist else ""
+        return f"{player}{assist_text}{team_suffix}"
+
+    if event_kind == "missed-penalty":
+        return f"{player}{team_suffix}"
+
+    if event_kind == "var":
+        detail = clean_event_detail(event.detail or "VAR")
+        return f"{detail} - {player}{team_suffix}"
+
+    if event.comments:
+        return f"{player} - {event.comments}{team_suffix}"
+
+    return f"{player}{team_suffix}"
+
+
+def event_detail_label(event: FixtureEvent) -> str:
+    event_kind = event_type(event)
+    labels = {
+        "goal": "Goal",
+        "penalty-goal": "Penalty goal",
+        "missed-penalty": "Missed penalty",
+        "own-goal": "Own goal",
+        "yellow-card": "Yellow card",
+        "red-card": "Red card",
+        "substitution": "Substitution",
+        "var": normalise_var_detail(event.detail),
+        "penalty": "Penalty",
+    }
+    return labels.get(event_kind, clean_event_detail(event.detail or event.type))
+
+
+def normalise_var_detail(detail: str | None) -> str:
+    clean = clean_event_detail(detail or "VAR")
+    return f"VAR - {clean}" if clean.upper() != "VAR" else "VAR"
+
+
+def clean_event_detail(detail: str | None) -> str:
+    clean = " ".join(str(detail or "").split())
+    if not clean:
+        return "Event"
+    if clean.lower() == "normal goal":
+        return "Goal"
+    return clean[:1].upper() + clean[1:]

@@ -4,8 +4,12 @@ const paginationEl = document.querySelector("[data-pagination]");
 const filterForm = document.querySelector("[data-filter-form]");
 const params = new URLSearchParams(window.location.search);
 const PAGE_SIZE = 15;
+const COMMENT_POLL_DELAY_MS = 6000;
+const COMMENT_POLL_LIMIT = 5;
 let competitionLabels = {};
 let seasonLabels = {};
+let commentPollTimer;
+let commentPollAttempts = 0;
 
 init();
 
@@ -97,6 +101,7 @@ async function loadResults() {
   const page = currentPage();
   resultsGrid.innerHTML = "";
   clearPagination();
+  clearCommentPoll();
   setStatus(resultsSummary, `Searching ${searchContext(q, competition, season)}...`);
   try {
     const { matches, pagination, notices = [] } = await apiGet("/matches/search", {
@@ -146,6 +151,7 @@ function renderMatches(matches, pagination, q, competition, season, notices = []
     button.addEventListener("click", () => storeMatch(JSON.parse(decodeURIComponent(button.dataset.match))));
   });
   renderPagination(pagination);
+  scheduleCommentPoll(matches);
 }
 
 function matchCard(match) {
@@ -185,15 +191,38 @@ function scoreContextMarkup(match) {
 
 function youtubeCommentLabel(match) {
   const status = match.youtube_comment_status || "unchecked";
-  const count = Number.isInteger(match.youtube_comment_count) ? match.youtube_comment_count : null;
+  const analysedCount = Number.isInteger(match.youtube_analysed_comment_count)
+    ? match.youtube_analysed_comment_count
+    : null;
+  const sampledCount = Number.isInteger(match.youtube_comment_count) ? match.youtube_comment_count : null;
+  const count = analysedCount ?? sampledCount;
   if (status === "complete" && count !== null) {
-    return `${formatNumber(count)} YouTube ${count === 1 ? "comment" : "comments"}`;
+    return `${formatNumber(count)} ${count === 1 ? "comment" : "comments"} analysed from selected YouTube highlight videos`;
   }
-  if (status === "pending") return "Comments pending";
-  if (status === "no_comments") return "No public comments found";
-  if (status === "unavailable") return "Comments unavailable";
-  if (status === "failed") return "Comment check failed";
-  return "Comments not checked";
+  if (status === "pending") return "Analysing selected YouTube highlight videos";
+  if (status === "no_comments") return "No public comments found in selected highlight videos";
+  if (status === "unavailable") return "No suitable YouTube highlight videos found";
+  if (status === "rate_limited") return "YouTube comment analysis temporarily rate limited";
+  if (status === "failed") return "Comment analysis unavailable";
+  return "YouTube comment analysis not started";
+}
+
+function scheduleCommentPoll(matches) {
+  if (!matches.some(match => match.youtube_comment_status === "pending")) {
+    commentPollAttempts = 0;
+    return;
+  }
+  if (commentPollAttempts >= COMMENT_POLL_LIMIT) return;
+  commentPollAttempts += 1;
+  commentPollTimer = window.setTimeout(() => {
+    loadResults();
+  }, COMMENT_POLL_DELAY_MS);
+}
+
+function clearCommentPoll() {
+  if (!commentPollTimer) return;
+  window.clearTimeout(commentPollTimer);
+  commentPollTimer = null;
 }
 
 function stageWithSeason(match) {

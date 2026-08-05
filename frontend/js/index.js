@@ -3,6 +3,14 @@ const recentHeading = document.querySelector("[data-recent-heading]");
 const searchForm = document.querySelector("[data-search-form]");
 const competitionFilters = document.querySelector("[data-competition-filters]");
 const seasonFilters = document.querySelector("[data-season-filters]");
+const POPULAR_COMPETITION_CODES = ["PL", "PD", "CL", "EL"];
+const VISIBLE_SEASON_COUNT = 5;
+const AMERICAS_PLACEHOLDERS = [
+  { code: "BRA1", name: "Brazil Serie A", short_name: "Brazil Serie A", logo_url: "https://media.api-sports.io/football/leagues/71.png", disabled: true },
+  { code: "ARG1", name: "Argentina Primera Division", short_name: "Argentina Primera", logo_url: "https://media.api-sports.io/football/leagues/128.png", disabled: true },
+  { code: "MLS", name: "Major League Soccer", short_name: "MLS", logo_url: "https://media.api-sports.io/football/leagues/253.png", disabled: true },
+  { code: "MEX1", name: "Liga MX", short_name: "Liga MX", logo_url: "https://media.api-sports.io/football/leagues/262.png", disabled: true },
+];
 let competitionLabels = {};
 
 init();
@@ -47,33 +55,96 @@ function renderFilters(metadata) {
 }
 
 function renderCompetitionFilters(competitions) {
+  const competitionsByCode = mapByCode(competitions);
+  const popularCompetitions = POPULAR_COMPETITION_CODES
+    .map((code) => competitionsByCode[code])
+    .filter(Boolean);
+  const europeanDomestic = ["PL", "PD", "BL1", "SA", "FL1", "NED1", "POR1", "BEL1", "TUR1"]
+    .map((code) => competitionsByCode[code])
+    .filter(Boolean);
+  const europeanClub = ["CL", "EL", "UECL"]
+    .map((code) => competitionsByCode[code])
+    .filter(Boolean);
+
   competitionFilters.innerHTML = [
     filterRadio("competition", "", "All", null, true),
-    ...competitions.map((competition) => filterRadio(
+    ...popularCompetitions.map((competition) => filterRadio(
       "competition",
       competition.code,
       competition.short_name || competition.name,
       competition.logo_url,
       false,
     )),
+    moreFilter("More competitions", [
+      filterGroup("European domestic leagues", europeanDomestic),
+      filterGroup("European competitions", europeanClub),
+      filterGroup("Americas", AMERICAS_PLACEHOLDERS),
+    ]),
   ].join("");
 }
 
 function renderSeasonFilters(seasons) {
+  const visibleSeasons = seasons.slice(0, VISIBLE_SEASON_COUNT);
+  const olderSeasons = seasons.slice(VISIBLE_SEASON_COUNT);
+
   seasonFilters.innerHTML = [
     filterRadio("season", "", "All", null, true),
-    ...seasons.map((season) => filterRadio("season", String(season.year), compactSeasonLabel(season.label), null, false)),
+    ...visibleSeasons.map((season) => filterRadio("season", String(season.year), compactSeasonLabel(season.label), null, false)),
+    olderSeasons.length ? moreFilter("More seasons", [
+      filterGroup("Archive seasons", olderSeasons.map((season) => ({
+        code: String(season.year),
+        name: season.label,
+        short_name: compactSeasonLabel(season.label),
+      })), "season"),
+    ]) : "",
   ].join("");
 }
 
-function filterRadio(name, value, label, icon, checked) {
+function filterRadio(name, value, label, icon, checked, disabled = false) {
   const iconMarkup = icon ? `<img class="filter-emblem" src="${escapeAttr(icon)}" alt="" loading="lazy" onerror="this.remove()">` : "";
   return `
-    <label class="filter-option">
-      <input type="radio" name="${escapeAttr(name)}" value="${escapeAttr(value)}" ${checked ? "checked" : ""}>
+    <label class="filter-option ${disabled ? "is-unavailable" : ""}">
+      <input type="radio" name="${escapeAttr(name)}" value="${escapeAttr(value)}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}>
       <span>${iconMarkup}${escapeHtml(label)}</span>
     </label>
   `;
+}
+
+function filterGroup(label, items, name = "competition") {
+  if (!items.length) return "";
+  return `
+    <div class="filter-panel-group">
+      <strong>${escapeHtml(label)}</strong>
+      <div class="filter-panel-options">
+        ${items.map((item) => filterRadio(
+          name,
+          item.code,
+          item.short_name || item.name,
+          item.logo_url,
+          false,
+          Boolean(item.disabled),
+        )).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function moreFilter(label, groups) {
+  return `
+    <details class="filter-more">
+      <summary>${escapeHtml(label)}</summary>
+      <div class="filter-panel">
+        ${groups.filter(Boolean).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function mapByCode(items) {
+  return items.reduce((mapped, item) => {
+    mapped[item.code] = item;
+    return mapped;
+  }, {});
 }
 
 function labelsByCode(competitions) {
@@ -151,10 +222,12 @@ function matchCard(match) {
       <span class="match-card__meta">${match.competition} - ${formatDate(match.date)}</span>
       <span class="match-card__teams">
         <span class="match-card__team">${teamCrest(match.home_crest, match.home)}${displayTeamName(match, "home")}</span>
-        <strong>${displayScore(match)}</strong>
+        <span class="match-card__score-stack">
+          <strong>${displayScore(match)}</strong>
+        </span>
         <span class="match-card__team">${displayTeamName(match, "away")}${teamCrest(match.away_crest, match.away)}</span>
+        ${scoreContextMarkup(match)}
       </span>
-      ${scoreContextMarkup(match)}
       <span class="match-card__round">${match.round || match.season || ""}</span>
     </button>
   `;

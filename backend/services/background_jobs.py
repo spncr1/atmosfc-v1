@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -18,6 +19,8 @@ from backend.services.youtube_cache import fetch_and_cache_youtube_comment_count
 JOB_ARCHIVE_HYDRATION = "archive_hydration"
 JOB_FIXTURE_EVENTS = "fixture_events_hydration"
 JOB_YOUTUBE_COMMENT_COUNT = "youtube_comment_count"
+YOUTUBE_FAILED_RETRY_AFTER = timedelta(hours=24)
+YOUTUBE_RATE_LIMIT_RETRY_AFTER = timedelta(hours=12)
 
 
 async def queue_youtube_comment_count_jobs(matches: list[MatchSummary]) -> int:
@@ -125,6 +128,8 @@ async def process_queued_jobs(
     stats = {"seen": 0, "complete": 0, "failed": 0}
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
+        await repo.recover_stale_background_jobs(session, job_types=job_types)
+        await session.commit()
         jobs = await repo.queued_background_jobs(session, limit=limit, job_types=job_types)
         stats["seen"] = len(jobs)
 
@@ -243,7 +248,23 @@ def should_queue_youtube_count(fixture: Fixture) -> bool:
     cache = fixture.youtube_comment_cache
     if cache is None:
         return True
-    return cache.status in {"unchecked", "failed"}
+    if cache.status == "unchecked":
+        return True
+    if cache.status == "pending":
+        return True
+    if cache.status == "failed":
+        return cache_is_retryable(cache.checked_at, YOUTUBE_FAILED_RETRY_AFTER)
+    if cache.status == "rate_limited":
+        return cache_is_retryable(cache.checked_at, YOUTUBE_RATE_LIMIT_RETRY_AFTER)
+    return False
+
+
+def cache_is_retryable(checked_at: datetime | None, retry_after: timedelta) -> bool:
+    if checked_at is None:
+        return True
+    if checked_at.tzinfo is None:
+        checked_at = checked_at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - checked_at >= retry_after
 
 
 def safe_int(value: object) -> int | None:
