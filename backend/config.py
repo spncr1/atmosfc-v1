@@ -20,6 +20,15 @@ class Settings(BaseSettings):
 
     api_football_key: str = Field(default="", alias="API_FOOTBALL_KEY")
     api_football_base_url: str = Field(default="https://v3.football.api-sports.io", alias="API_FOOTBALL_BASE_URL")
+    wikidata_api_url: str = Field(default="https://www.wikidata.org/w/api.php", alias="WIKIDATA_API_URL")
+    wikidata_entity_data_url: str = Field(
+        default="https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json",
+        alias="WIKIDATA_ENTITY_DATA_URL",
+    )
+    wikimedia_user_agent: str = Field(
+        default="AtmosFC/0.1 (https://atmosfc-v1.vercel.app)",
+        alias="WIKIMEDIA_USER_AGENT",
+    )
     football_data_api_key: str = Field(default="", alias="FOOTBALL_DATA_API_KEY")
     youtube_api_key: str = Field(default="", alias="YOUTUBE_API_KEY")
     database_url: str = Field(default="", alias="DATABASE_URL")

@@ -1,0 +1,45 @@
+<!-- Team profile page -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atmos FC - Team Profile</title>
+
+    <!-- CSS stylesheet -->
+    <link rel="stylesheet" href="css/global.css">
+    <link rel="stylesheet" href="css/team.css?v=20260806-team-profile-cleanup">
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  </head>
+
+  <body class="team-page">
+    <header>
+      <a class="brand" href="analysis.html" data-back-link><- Back</a>
+      <img class="team-nav-logo" src="assets/atmosfc-logo-v2.svg" alt="Atmos FC">
+    </header>
+
+    <main class="content team-content">
+      <section class="team-hero">
+        <div class="team-hero-copy">
+          <p class="team-kicker" data-team-status>Team profile</p>
+          <h1 data-team-name>Team profile</h1>
+          <p data-team-summary>Loading team profile...</p>
+        </div>
+        <img class="team-hero-logo" data-team-logo alt="">
+      </section>
+
+      <section class="team-facts" data-team-facts></section>
+
+      <section class="team-profile-grid" data-team-sections></section>
+    </main>
+
+    <script src="js/config.js?v=20260804-archive-search-final"></script>
+    <script src="js/api.js?v=20260804-archive-search-final"></script>
+    <script src="js/team.js?v=20260806-team-profile-cleanup"></script>
+  </body>
+</html>

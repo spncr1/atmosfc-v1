@@ -1,8 +1,8 @@
 # Pydantic request/response models
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MatchSummary(BaseModel):
@@ -92,6 +92,41 @@ class MetadataResponse(BaseModel):
 
     competitions: List[CompetitionOption]
     seasons: List[SeasonOption]
+
+
+class TeamProfileSection(BaseModel):
+    # One sourced section for a team profile page.
+
+    title: str
+    body: str
+
+
+class TeamProfileResponse(BaseModel):
+    # Team profile facts sourced from API-Football and optional enrichment.
+
+    provider_team_id: int
+    name: str
+    code: Optional[str] = None
+    country_name: Optional[str] = None
+    founded: Optional[int] = None
+    is_national: bool = False
+    logo_url: Optional[str] = None
+    venue_name: Optional[str] = None
+    venue_city: Optional[str] = None
+    venue_label: Optional[str] = None
+    summary: Optional[str] = None
+    profile_sections: List[TeamProfileSection] = Field(default_factory=list)
+    has_manual_profile: bool = False
+    wikidata_qid: Optional[str] = None
+    wikipedia_title: Optional[str] = None
+    wikipedia_url: Optional[str] = None
+    official_website: Optional[str] = None
+    profile_confidence: Optional[int] = None
+    profile_needs_review: bool = False
+    source_attribution_url: Optional[str] = None
+    license_label: Optional[str] = None
+    facts: Dict[str, Any] = Field(default_factory=dict)
+    data_source: str = "local"
 
 
 class MatchEvent(BaseModel):

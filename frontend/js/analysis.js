@@ -1,6 +1,8 @@
 const statusEl = document.querySelector("[data-status]");
 const badgesEl = document.querySelector("[data-match-badges]");
 const matchDetailEl = document.querySelector("[data-match-detail]");
+const homeTeamLinkEl = document.querySelector("[data-home-team-link]");
+const awayTeamLinkEl = document.querySelector("[data-away-team-link]");
 const homeCrestEl = document.querySelector("[data-home-crest]");
 const awayCrestEl = document.querySelector("[data-away-crest]");
 const homeShortEl = document.querySelector("[data-home-short]");
@@ -15,6 +17,9 @@ const commentsEl = document.querySelector("[data-comments]");
 const legendEl = document.querySelector("[data-chart-legend]");
 const chartTitleEl = document.querySelector(".analysis-chart-card .analysis-card-label");
 const chartWrapEl = document.querySelector(".analysis-chart-wrap");
+const chartHelpButton = document.querySelector("[data-chart-help-button]");
+const chartHelpModal = document.querySelector("[data-chart-help-modal]");
+const chartHelpClose = document.querySelector("[data-chart-help-close]");
 const backLinkEl = document.querySelector("[data-back-link]");
 const params = new URLSearchParams(window.location.search);
 let pulseChart;
@@ -23,6 +28,7 @@ init();
 
 async function init() {
   setupBackLink();
+  setupChartHelp();
   const stored = JSON.parse(sessionStorage.getItem("selectedMatch") || "null");
   if (stored) renderMatchHeader(stored);
 
@@ -58,6 +64,8 @@ function renderMatchHeader(match) {
   matchDetailEl.textContent = [formatDate(match.date), match.venue || "Venue unavailable"].filter(Boolean).join(" · ");
   setCrest(homeCrestEl, match.home_crest);
   setCrest(awayCrestEl, match.away_crest);
+  setTeamLink(homeTeamLinkEl, match.home_team_id, match.home);
+  setTeamLink(awayTeamLinkEl, match.away_team_id, match.away);
   homeShortEl.textContent = displayTeamName(match, "home");
   awayShortEl.textContent = displayTeamName(match, "away");
   homeFullEl.textContent = `${match.home} (H)`;
@@ -266,11 +274,36 @@ function renderChart(buckets, meta = {}) {
   });
 
   legendEl.innerHTML = `
-    <span><i class="legend-line"></i>Atmos reaction intensity</span>
-    <span><i class="legend-fill-positive"></i>High intensity zone</span>
-    <span><i class="legend-fill-negative"></i>Low intensity zone</span>
-    <span><i class="legend-dot"></i>Peak window</span>
+    ${legendItem("legend-line", "Atmos reaction intensity", "A 0-100 score estimating how strong the post-match reaction was in each window.")}
+    ${legendItem("legend-fill-positive", "High intensity zone", "The upper band where reaction volume and/or match events suggest a major spike.")}
+    ${legendItem("legend-fill-negative", "Low intensity zone", "The lower band where the reaction was quieter or the match had fewer major signals.")}
+    ${legendItem("legend-dot", "Peak window", "The strongest window on the chart for that match.")}
   `;
+}
+
+function legendItem(iconClass, label, description) {
+  return `<span class="legend-help" title="${escapeAttr(description)}"><i class="${escapeAttr(iconClass)}"></i>${escapeHtml(label)}</span>`;
+}
+
+function setupChartHelp() {
+  if (!chartHelpButton || !chartHelpModal || !chartHelpClose) return;
+  chartHelpButton.addEventListener("click", () => {
+    chartHelpModal.hidden = false;
+    chartHelpClose.focus();
+  });
+  chartHelpClose.addEventListener("click", closeChartHelp);
+  chartHelpModal.addEventListener("click", (event) => {
+    if (event.target === chartHelpModal) closeChartHelp();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !chartHelpModal.hidden) closeChartHelp();
+  });
+}
+
+function closeChartHelp() {
+  if (!chartHelpModal) return;
+  chartHelpModal.hidden = true;
+  chartHelpButton?.focus();
 }
 
 function intensityWindowLabel(bucket, isEventFallback) {
@@ -371,6 +404,25 @@ function setCrest(target, src) {
   target.onerror = () => { target.hidden = true; };
 }
 
+function setTeamLink(target, teamId, teamName) {
+  if (!target) return;
+  if (!teamId) {
+    target.removeAttribute("href");
+    target.removeAttribute("title");
+    target.setAttribute("aria-disabled", "true");
+    target.onclick = null;
+    return;
+  }
+  target.href = `team.html?team_id=${encodeURIComponent(teamId)}`;
+  target.title = `Open ${teamName || "team"} profile`;
+  target.removeAttribute("aria-disabled");
+  target.onclick = storeAnalysisReturnUrl;
+}
+
+function storeAnalysisReturnUrl() {
+  sessionStorage.setItem("analysisReturnUrl", window.location.href);
+}
+
 // will add more to this as the list expands
 function shortTeamName(name) {
   const clean = String(name || "").trim();
@@ -449,4 +501,8 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("`", "&#096;");
 }

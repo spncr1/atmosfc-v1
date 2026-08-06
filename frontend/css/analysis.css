@@ -104,6 +104,24 @@
   object-fit: contain;
 }
 
+.analysis-crest-link {
+  display: inline-grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.analysis-crest-link[aria-disabled="true"] {
+  cursor: default;
+}
+
+.analysis-crest-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
 .analysis-team {
   display: grid;
   gap: 6px;
@@ -172,7 +190,7 @@
 .analysis-card-label {
   margin: 0;
   color: var(--negative-muted);
-  font-size: 0.74rem;
+  font-size: 0.9rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -203,7 +221,44 @@
 }
 
 .analysis-chart-card {
+  position: relative;
   border-radius: 12px;
+}
+
+.analysis-chart-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.analysis-chart-heading .analysis-card-label {
+  margin: 0;
+}
+
+.analysis-help-button {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--accent);
+  background: rgba(200, 255, 71, 0.08);
+  border: 1px solid rgba(200, 255, 71, 0.45);
+  border-radius: 999px;
+  cursor: help;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.analysis-help-button:hover,
+.analysis-help-button:focus-visible {
+  border-color: var(--accent);
+  background: rgba(200, 255, 71, 0.16);
+  outline: none;
 }
 
 .analysis-chart-wrap {
@@ -216,6 +271,7 @@
   flex-wrap: wrap;
   gap: 18px;
   margin-top: 16px;
+  padding-right: 42px;
   color: var(--negative-muted);
   font-size: 0.78rem;
 }
@@ -224,6 +280,10 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+}
+
+.analysis-chart-legend .legend-help {
+  cursor: help;
 }
 
 .analysis-chart-legend i {
@@ -257,6 +317,80 @@
   height: 8px;
   background: var(--accent);
   border-radius: 999px;
+}
+
+.analysis-help-modal[hidden] {
+  display: none;
+}
+
+.analysis-help-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.analysis-help-panel {
+  position: relative;
+  width: min(520px, 100%);
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.42);
+}
+
+.analysis-help-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.analysis-help-close:hover,
+.analysis-help-close:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.analysis-help-list {
+  display: grid;
+  gap: 16px;
+  margin: 18px 0 0;
+}
+
+.analysis-help-list div {
+  display: grid;
+  gap: 5px;
+}
+
+.analysis-help-list dt {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.analysis-help-list dd {
+  margin: 0;
+  color: var(--negative-muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
 
 .analysis-two-column {
@@ -481,6 +615,11 @@
     height: 48px;
   }
 
+  .analysis-crest-link {
+    width: 48px;
+    height: 48px;
+  }
+
   /* Split-screen team text */
   .analysis-team {
     min-width: 0;
@@ -587,6 +726,11 @@
     height: 38px;
   }
 
+  .analysis-crest-link {
+    width: 38px;
+    height: 38px;
+  }
+
   /* Mobile team names */
   .analysis-team {
     min-width: 0;
@@ -656,7 +800,13 @@
   .analysis-chart-legend {
     gap: 10px 14px;
     margin-top: 14px;
+    padding-right: 34px;
     font-size: 0.68rem;
+  }
+
+  .analysis-help-button {
+    right: 16px;
+    bottom: 16px;
   }
 
   /* Mobile lower cards */
@@ -719,6 +869,11 @@
 
   /* Small-phone crests */
   .analysis-crest {
+    width: 32px;
+    height: 32px;
+  }
+
+  .analysis-crest-link {
     width: 32px;
     height: 32px;
   }

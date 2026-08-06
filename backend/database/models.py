@@ -105,12 +105,46 @@ class Team(Base, TimestampMixin):
     venue_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    profile_enrichment: Mapped[TeamProfileEnrichment | None] = relationship(
+        back_populates="team",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
     home_fixtures: Mapped[list[Fixture]] = relationship(back_populates="home_team", foreign_keys="Fixture.home_team_id")
     away_fixtures: Mapped[list[Fixture]] = relationship(back_populates="away_team", foreign_keys="Fixture.away_team_id")
 
     __table_args__ = (
         UniqueConstraint("provider", "provider_team_id", name="uq_teams_provider_id"),
         Index("ix_teams_name", "name"),
+    )
+
+
+class TeamProfileEnrichment(Base, TimestampMixin):
+    __tablename__ = "team_profile_enrichments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False, default="api_football")
+    provider_team_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    wikidata_qid: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    wikipedia_title: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    wikipedia_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    facts_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    confidence: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    needs_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attribution_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    license_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    raw_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    team: Mapped[Team] = relationship(back_populates="profile_enrichment")
+
+    __table_args__ = (
+        UniqueConstraint("team_id", name="uq_team_profile_enrichments_team"),
+        UniqueConstraint("provider", "provider_team_id", name="uq_team_profile_enrichments_provider_team"),
+        Index("ix_team_profile_enrichments_wikidata_qid", "wikidata_qid"),
+        Index("ix_team_profile_enrichments_needs_review", "needs_review"),
     )
 
 

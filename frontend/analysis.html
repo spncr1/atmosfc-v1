@@ -8,7 +8,7 @@
 
     <!-- CSS stylesheet -->
     <link rel="stylesheet" href="css/global.css">
-    <link rel="stylesheet" href="css/analysis.css?v=20260805-key-events">
+    <link rel="stylesheet" href="css/analysis.css?v=20260806-chart-help">
 
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -33,7 +33,9 @@
         </div>
 
         <div class="analysis-scoreboard">
-          <img class="analysis-crest" data-home-crest alt="">
+          <a class="analysis-crest-link" data-home-team-link aria-label="Open home team profile">
+            <img class="analysis-crest" data-home-crest alt="">
+          </a>
           <div class="analysis-team analysis-team-home">
             <strong data-home-short>Home</strong>
             <span data-home-full></span>
@@ -46,20 +48,50 @@
             <strong data-away-short>Away</strong>
             <span data-away-full></span>
           </div>
-          <img class="analysis-crest" data-away-crest alt="">
+          <a class="analysis-crest-link" data-away-team-link aria-label="Open away team profile">
+            <img class="analysis-crest" data-away-crest alt="">
+          </a>
         </div>
       </section>
 
       <section class="analysis-metrics" data-summary></section>
 
       <section class="analysis-card analysis-chart-card">
-        <p class="analysis-card-label">Atmos reaction intensity - 24hrs after full time</p>
+        <div class="analysis-chart-heading">
+          <p class="analysis-card-label">Atmos reaction intensity - 24hrs after full time</p>
+          <button class="analysis-help-button" type="button" aria-label="Explain chart key" data-chart-help-button>?</button>
+        </div>
         <div class="analysis-chart-wrap">
           <canvas id="pulseChart" role="img" aria-label="Line chart showing Atmos reaction intensity over the 24 hours after full time">
             Atmos reaction intensity chart over the 24 hours after full time.
           </canvas>
         </div>
         <div class="analysis-chart-legend" data-chart-legend></div>
+      </section>
+
+      <section class="analysis-help-modal" data-chart-help-modal hidden>
+        <div class="analysis-help-panel" role="dialog" aria-modal="true" aria-labelledby="chart-help-title">
+          <button class="analysis-help-close" type="button" aria-label="Close chart help" data-chart-help-close>&times;</button>
+          <p class="analysis-card-label" id="chart-help-title">Chart key</p>
+          <dl class="analysis-help-list">
+            <div>
+              <dt>Atmos reaction intensity</dt>
+              <dd>A 0-100 score estimating how strong the post-match reaction was in each window.</dd>
+            </div>
+            <div>
+              <dt>High intensity zone</dt>
+              <dd>The upper band where reaction volume and/or match events suggest a major spike.</dd>
+            </div>
+            <div>
+              <dt>Low intensity zone</dt>
+              <dd>The lower band where the reaction was quieter or the match had fewer major signals.</dd>
+            </div>
+            <div>
+              <dt>Peak window</dt>
+              <dd>The strongest window on the chart for that match.</dd>
+            </div>
+          </dl>
+        </div>
       </section>
 
       <section class="analysis-two-column">
@@ -78,6 +110,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
-    <script src="js/analysis.js"></script>
+    <script src="js/analysis.js?v=20260806-chart-help"></script>
   </body>
 </html>

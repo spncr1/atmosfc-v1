@@ -17,11 +17,13 @@ from backend.models.schemas import (
     MatchSearchResponse,
     MetadataResponse,
     ReactionIntensityBucket,
+    TeamProfileResponse,
 )
 from backend.repositories import football_data as repo
 from backend.services import football_api
 from backend.services.football_api import FootballDataError
 from backend.services.metadata import MetadataError, frontend_metadata
+from backend.services.team_profiles import TeamProfileNotFoundError, TeamProfileUnavailableError, team_profile
 from backend.services.matches import (
     MatchDataError,
     analysis_match,
@@ -65,6 +67,18 @@ async def get_metadata() -> MetadataResponse:
     try:
         return await frontend_metadata()
     except MetadataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/teams/{team_id}", response_model=TeamProfileResponse)
+async def get_team_profile(team_id: int) -> TeamProfileResponse:
+    # Return basic API-Football facts for one team profile page.
+
+    try:
+        return await team_profile(team_id)
+    except TeamProfileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except TeamProfileUnavailableError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 

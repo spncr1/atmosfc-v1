@@ -23,6 +23,7 @@ from backend.database.models import (
     Season,
     SyncRun,
     Team,
+    TeamProfileEnrichment,
     YouTubeCommentCache,
 )
 
@@ -641,6 +642,71 @@ async def teams_by_provider_ids(session: AsyncSession, provider_team_ids: list[i
         )
     )
     return {team.provider_team_id: team for team in rows}
+
+
+async def team_profile_enrichment_for_team(
+    session: AsyncSession,
+    team: Team,
+) -> TeamProfileEnrichment | None:
+    return await session.scalar(
+        select(TeamProfileEnrichment).where(TeamProfileEnrichment.team_id == team.id)
+    )
+
+
+async def team_profile_enrichment_by_provider_id(
+    session: AsyncSession,
+    provider_team_id: int | None,
+) -> TeamProfileEnrichment | None:
+    if provider_team_id is None:
+        return None
+    return await session.scalar(
+        select(TeamProfileEnrichment).where(
+            TeamProfileEnrichment.provider == PROVIDER,
+            TeamProfileEnrichment.provider_team_id == provider_team_id,
+        )
+    )
+
+
+async def upsert_team_profile_enrichment(
+    session: AsyncSession,
+    team: Team,
+    *,
+    wikidata_qid: str | None = None,
+    wikipedia_title: str | None = None,
+    wikipedia_url: str | None = None,
+    summary: str | None = None,
+    facts_json: dict[str, Any] | None = None,
+    confidence: int | None = None,
+    needs_review: bool = False,
+    source_updated_at: datetime | None = None,
+    attribution_url: str | None = None,
+    license_label: str | None = None,
+    raw_payload: dict[str, Any] | None = None,
+) -> TeamProfileEnrichment:
+    enrichment = await team_profile_enrichment_for_team(session, team)
+    values = {
+        "team_id": team.id,
+        "provider": team.provider,
+        "provider_team_id": team.provider_team_id,
+        "wikidata_qid": wikidata_qid,
+        "wikipedia_title": wikipedia_title,
+        "wikipedia_url": wikipedia_url,
+        "summary": summary,
+        "facts_json": facts_json,
+        "confidence": confidence,
+        "needs_review": needs_review,
+        "source_updated_at": source_updated_at,
+        "attribution_url": attribution_url,
+        "license_label": license_label,
+        "raw_payload": raw_payload,
+    }
+    if enrichment is None:
+        enrichment = TeamProfileEnrichment(**values)
+        session.add(enrichment)
+    else:
+        _assign(enrichment, values)
+    await session.flush()
+    return enrichment
 
 
 async def search_teams_by_terms(session: AsyncSession, terms: list[str], limit: int = 10) -> list[Team]:
