@@ -32,7 +32,9 @@ from backend.services.matches import (
 )
 from backend.services.youtube import YouTubeError, fetch_match_comments
 from backend.services.youtube_cache import cache_youtube_comment_batch, cache_youtube_comment_error
-from backend.services.sentiment import analyse_comments
+from backend.services.sentiment import analyse_comments, energy_label
+
+ANALYSIS_ALGORITHM_VERSION = "match_context_v1"
 
 app = FastAPI(title="Atmos API", version="0.1.0")
 settings = get_settings()
@@ -136,7 +138,7 @@ async def get_search_matches(
 
 @app.post("/analyse", response_model=AnalysisResponse)
 async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
-    # Analyse YouTube sentiment for one Football-Data.org match.
+    # Analyse one finished match, using cached analysis before new YouTube calls.
 
     match = None
     try:
@@ -153,6 +155,9 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
             score_margin = _summary_score_margin(match.score)
         if match.status != "FINISHED":
             raise HTTPException(status_code=400, detail="Only finished matches can be analysed.")
+        cached_response = await cached_analysis_response(match, events)
+        if cached_response is not None:
+            return cached_response
         try:
             video_comments = fetch_match_comments(match)
         except YouTubeError as exc:
@@ -166,7 +171,7 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
             return event_fallback_analysis_response(match, events)
         kickoff = datetime.fromisoformat(match.date.replace("Z", "+00:00")).astimezone(timezone.utc)
         source_video_count = len({comment.permalink for comment in video_comments.comments}) or 1
-        buckets, reaction_intensity, half_split, top_comments, peak_minute, peak_window, overall_vibe, crowd_energy = analyse_comments(
+        buckets, reaction_intensity, half_split, top_comments, peak_minute, peak_window, _youtube_vibe, _youtube_energy = analyse_comments(
             video_comments.comments,
             kickoff,
             score_margin,
@@ -188,10 +193,11 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
                 peak_minute=peak_minute,
                 peak_window=peak_window,
                 source_video_count=source_video_count,
-                overall_vibe=overall_vibe,
-                crowd_energy=crowd_energy,
+                overall_vibe=match_context_vibe(match, events),
+                crowd_energy=reaction_energy_label(total_comments),
                 youtube_video_url=video_comments.url,
                 analysis_mode="youtube_sentiment",
+                analysis_version=ANALYSIS_ALGORITHM_VERSION,
             ),
         )
         await cache_analysis_response(match, response)
@@ -250,7 +256,10 @@ async def cached_analysis_response(match, events) -> AnalysisResponse | None:
         cache = await repo.analysis_cache_for_fixture(session, fixture)
         if cache is None or cache.status != "complete":
             return None
-        payload = cache.payload
+    payload = cache.payload
+    meta = payload.get("meta") if isinstance(payload, dict) else None
+    if not isinstance(meta, dict) or meta.get("analysis_version") != ANALYSIS_ALGORITHM_VERSION:
+        return None
 
     response = AnalysisResponse.model_validate(payload)
     response.match = match
@@ -288,6 +297,7 @@ def event_fallback_analysis_response(match, events) -> AnalysisResponse:
             crowd_energy=event_fallback_energy(events),
             youtube_video_url=None,
             analysis_mode="event_fallback",
+            analysis_version=ANALYSIS_ALGORITHM_VERSION,
         ),
     )
 
@@ -337,16 +347,39 @@ def event_peak_window(buckets: list[ReactionIntensityBucket]) -> dict[str, int]:
 
 
 def event_fallback_vibe(match, events) -> dict[str, str]:
+    return match_context_vibe(match, events)
+
+
+def match_context_vibe(match, events) -> dict[str, str]:
     total_goals = total_score_goals(match)
     event_count = len(events)
-    if total_goals >= 6 and _summary_score_margin(match.score) <= 1:
+    margin = _summary_score_margin(match.score)
+    has_red_card = any(getattr(event, "type", "") == "red-card" for event in events)
+    has_penalties = bool(getattr(match, "penalty_score", None))
+    went_to_extra_time = getattr(match, "score_note", None) == "AET"
+
+    if not match.score or "-" not in match.score:
+        return {
+            "label": "Unavailable",
+            "subtext": "Match score data unavailable",
+        }
+
+    if has_penalties or (went_to_extra_time and margin <= 1):
+        label = "Dramatic"
+    elif total_goals >= 6 and margin <= 1:
         label = "Thriller"
+    elif total_goals >= 5 and margin <= 2:
+        label = "Thriller"
+    elif total_goals >= 5 and margin >= 4:
+        label = "Dominant"
     elif total_goals >= 5:
         label = "Chaotic"
     elif total_goals >= 3 or event_count >= 12:
         label = "Lively"
     elif total_goals == 0:
         label = "Cagey"
+    elif has_red_card and margin <= 1:
+        label = "Lively"
     else:
         label = "Competitive"
     return {
@@ -358,7 +391,7 @@ def event_fallback_vibe(match, events) -> dict[str, str]:
 def event_fallback_energy(events) -> dict[str, str]:
     if not events:
         return {
-            "label": "Timeline only",
+            "label": "Unavailable",
             "subtext": "No key events were available for this match",
         }
     if len(events) >= 14:
@@ -371,6 +404,15 @@ def event_fallback_energy(events) -> dict[str, str]:
         "label": label,
         "subtext": "Based on the match timeline, not YouTube comments",
     }
+
+
+def reaction_energy_label(total_comments: int) -> dict[str, str]:
+    if total_comments <= 0:
+        return {
+            "label": "Unavailable",
+            "subtext": "No YouTube comment data available",
+        }
+    return energy_label(total_comments)
 
 
 def total_score_goals(match) -> int:

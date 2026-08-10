@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from backend.database.models import Team, TeamProfileEnrichment
+from backend.database.models import Team, TeamProfileEnrichment, TeamVisualProfile
 from backend.database.session import get_sessionmaker
 from backend.models.schemas import TeamProfileResponse
 from backend.providers.api_football import ApiFootballClient
@@ -12,6 +12,7 @@ from backend.providers.errors import ProviderConfigError, ProviderError, Provide
 from backend.repositories import football_data as repo
 from backend.services.matches import clean_stadium_name
 from backend.services.team_profile_resolver import resolve_team_profile_enrichment
+from backend.services.team_visuals import ensure_team_visual_profiles, team_visual_response
 
 
 class TeamProfileError(RuntimeError):
@@ -50,8 +51,15 @@ async def team_profile(provider_team_id: int) -> TeamProfileResponse:
             if team is None:
                 raise TeamProfileNotFoundError("Team profile was not found.")
             enrichment = await profile_enrichment(session, team)
+            visual_profiles = await ensure_team_visual_profiles(session, [team])
+            visual_profile = visual_profiles.get(team.provider_team_id)
             await session.commit()
-            return profile_response(team, enrichment=enrichment, data_source=data_source)
+            return profile_response(
+                team,
+                enrichment=enrichment,
+                data_source=data_source,
+                visual_profile=visual_profile,
+            )
     except SQLAlchemyError as exc:
         raise TeamProfileUnavailableError("Team profile could not be loaded from the local database.") from exc
 
@@ -70,6 +78,7 @@ def profile_response(
     *,
     enrichment: TeamProfileEnrichment | None = None,
     data_source: str,
+    visual_profile: TeamVisualProfile | None = None,
 ) -> TeamProfileResponse:
     stadium = clean_stadium_name(team.venue_name)
     facts = enrichment.facts_json if enrichment and isinstance(enrichment.facts_json, dict) else {}
@@ -96,6 +105,7 @@ def profile_response(
         venue_name=stadium,
         venue_city=team.venue_city,
         venue_label=venue_label,
+        visual=team_visual_response(visual_profile),
         summary=(enrichment.summary if enrichment else None) or wikidata_description,
         profile_sections=[],
         has_manual_profile=False,

@@ -5,6 +5,21 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
+class TeamVisualResponse(BaseModel):
+    # Visual identity values for team-aware UI surfaces.
+
+    primary: str
+    secondary: str
+    primary_colour: str
+    secondary_colour: str
+    glow: str
+    soft_glow: str
+    border: str
+    shadow: str
+    colour_source: str
+    colour_status: str
+
+
 class MatchSummary(BaseModel):
     # A football match returned to the frontend.
 
@@ -19,6 +34,8 @@ class MatchSummary(BaseModel):
     away_tla: Optional[str] = None
     home_crest: Optional[str] = None
     away_crest: Optional[str] = None
+    home_visual: Optional[TeamVisualResponse] = None
+    away_visual: Optional[TeamVisualResponse] = None
     score: Optional[str] = None
     score_note: Optional[str] = None
     penalty_score: Optional[str] = None
@@ -114,6 +131,7 @@ class TeamProfileResponse(BaseModel):
     venue_name: Optional[str] = None
     venue_city: Optional[str] = None
     venue_label: Optional[str] = None
+    visual: Optional[TeamVisualResponse] = None
     summary: Optional[str] = None
     profile_sections: List[TeamProfileSection] = Field(default_factory=list)
     has_manual_profile: bool = False
@@ -191,6 +209,7 @@ class AnalyseMeta(BaseModel):
     crowd_energy: Dict[str, str]
     youtube_video_url: Optional[str] = None
     analysis_mode: str = "youtube_sentiment"
+    analysis_version: str = "legacy"
 
 
 class AnalysisResponse(BaseModel):

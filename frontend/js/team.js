@@ -2,6 +2,8 @@ const backLinkEl = document.querySelector("[data-back-link]");
 const statusEl = document.querySelector("[data-team-status]");
 const nameEl = document.querySelector("[data-team-name]");
 const summaryEl = document.querySelector("[data-team-summary]");
+const heroEl = document.querySelector(".team-hero");
+const logoShellEl = document.querySelector("[data-team-logo-shell]");
 const logoEl = document.querySelector("[data-team-logo]");
 const factsEl = document.querySelector("[data-team-facts]");
 const sectionsEl = document.querySelector("[data-team-sections]");
@@ -27,6 +29,7 @@ function setupBackLink() {
 }
 
 function renderMissingTeam() {
+  applyTeamVisual("", "");
   statusEl.textContent = "No team selected";
   nameEl.textContent = "Team profile unavailable";
   summaryEl.textContent = "Open a team profile from a match page once crest navigation is wired in.";
@@ -46,6 +49,7 @@ async function renderTeamProfile(teamId) {
 }
 
 function renderLoadingTeam(teamId) {
+  applyTeamVisual(teamId, "");
   statusEl.textContent = "Loading team profile";
   nameEl.textContent = `Team ${escapeHtml(teamId)}`;
   summaryEl.textContent = "Loading API-Football team facts...";
@@ -60,6 +64,7 @@ function renderLoadingTeam(teamId) {
 }
 
 function renderTeamFacts(team) {
+  applyTeamVisual(team.provider_team_id, team.name, team.visual);
   statusEl.textContent = profileStatus(team);
   nameEl.textContent = team.name || `Team ${team.provider_team_id}`;
   summaryEl.textContent = team.summary || summaryText(team);
@@ -78,6 +83,7 @@ function renderTeamFacts(team) {
 }
 
 function renderTeamError(teamId, error) {
+  applyTeamVisual(teamId, "");
   statusEl.textContent = "Team profile unavailable";
   nameEl.textContent = `Team ${escapeHtml(teamId)}`;
   summaryEl.textContent = error.message || "This team profile could not be loaded.";
@@ -100,7 +106,7 @@ function summaryText(team) {
 
 function profileStatus(team) {
   if (team.wikidata_qid && !team.profile_needs_review) {
-    return "Sourced team profile";
+    return "Atmos FC team profile";
   }
   if (team.profile_needs_review) {
     return "Source match needs review";
@@ -191,12 +197,28 @@ function setTeamLogo(src, teamName) {
   if (!src) {
     logoEl.removeAttribute("src");
     logoEl.hidden = true;
+    if (logoShellEl) logoShellEl.hidden = true;
     return;
   }
+  if (logoShellEl) logoShellEl.hidden = false;
   logoEl.hidden = false;
   logoEl.src = src;
   logoEl.alt = teamName ? `${teamName} logo` : "";
-  logoEl.onerror = () => { logoEl.hidden = true; };
+  logoEl.onerror = () => {
+    logoEl.hidden = true;
+    if (logoShellEl) logoShellEl.hidden = true;
+  };
+}
+
+function applyTeamVisual(teamId, teamName, serverVisual = null) {
+  if (!heroEl || !window.AtmosTeamVisuals) return;
+  const visual = window.AtmosTeamVisuals.fromServer(serverVisual, teamId, teamName);
+  heroEl.style.setProperty("--team-primary", visual.primary);
+  heroEl.style.setProperty("--team-secondary", visual.secondary);
+  heroEl.style.setProperty("--team-glow", visual.glow);
+  heroEl.style.setProperty("--team-soft-glow", visual.softGlow);
+  heroEl.style.setProperty("--team-border", visual.border);
+  heroEl.style.setProperty("--team-shadow", visual.shadow);
 }
 
 function safeUrl(value) {

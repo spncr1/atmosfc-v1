@@ -334,6 +334,9 @@ def vibe_label(
 ) -> Dict[str, str]:
     # Translate sentiment, volume, and match context into a display descriptor.
 
+    if total_comments <= 0:
+        return {"label": "Unavailable", "subtext": "No YouTube comment data available"}
+
     for descriptor in VIBE_DESCRIPTORS:
         if score < descriptor["min_sentiment"] or score > descriptor["max_sentiment"]:
             continue
@@ -348,18 +351,19 @@ def vibe_label(
         if descriptor["requires_late_shift"] and abs(second_half_avg - first_half_avg) <= 0.2:
             continue
         return {"label": descriptor["label"], "subtext": descriptor["subtext"]}
-    fallback = VIBE_DESCRIPTORS[-1]
-    return {"label": fallback["label"], "subtext": fallback["subtext"]}
+    return {"label": "Unclear", "subtext": "Reaction data did not match a clear mood"}
 
 
 def energy_label(total_comments: int) -> Dict[str, str]:
     # Translate comment volume into a crowd energy descriptor.
 
+    if total_comments <= 0:
+        return {"label": "Unavailable", "subtext": "No YouTube comment data available"}
+
     for descriptor in ENERGY_DESCRIPTORS:
         if total_comments >= descriptor["min_comments"]:
             return {"label": descriptor["label"], "subtext": descriptor["subtext"]}
-    fallback = ENERGY_DESCRIPTORS[-1]
-    return {"label": fallback["label"], "subtext": fallback["subtext"]}
+    return {"label": "Unavailable", "subtext": "No YouTube comment data available"}
 
 
 def _sentiment_label(score: float) -> str:

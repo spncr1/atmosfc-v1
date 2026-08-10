@@ -209,6 +209,10 @@
   font-style: normal;
 }
 
+.match-row-competition-short {
+  display: none;
+}
+
 .match-row-stage {
   width: fit-content;
   padding: 6px 14px;
@@ -503,6 +507,56 @@
     margin-right: auto;
     margin-left: auto;
   }
+
+  .results-page .match-row-meta {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 7px;
+    column-gap: 10px;
+    align-items: start;
+  }
+
+  .results-page .match-row-meta em {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .results-page .match-row-competition-full {
+    display: none;
+  }
+
+  .results-page .match-row-competition-short {
+    display: inline;
+  }
+
+  .results-page .match-row-date {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    align-self: center;
+    white-space: nowrap;
+    font-size: 0.78rem;
+    font-weight: 800;
+  }
+
+  .results-page .match-row-stage {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .results-page .match-row-meta em,
+  .results-page .match-row-stage {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .results-page .match-row-footer small {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.25;
+  }
 }
 
 /* ### SMALL PHONES ### */
@@ -558,13 +612,17 @@
 
   /* Small-phone match metadata */
   .results-page .match-row-meta {
-    gap: 7px;
+    gap: 6px;
   }
 
   .results-page .match-row-meta em,
   .results-page .match-row-stage {
-    padding: 5px 12px;
-    font-size: 0.78rem;
+    padding: 5px 10px;
+    font-size: 0.72rem;
+  }
+
+  .results-page .match-row-date {
+    font-size: 0.76rem;
   }
 
   /* Small-phone match score row */
@@ -583,6 +641,14 @@
   }
 
   /* Small-phone match footer */
+  .results-page .match-row-footer {
+    gap: 10px;
+  }
+
+  .results-page .match-row-footer small {
+    font-size: 0.74rem;
+  }
+
   .results-page .match-row-footer i {
     padding: 9px 18px;
     font-size: 0.84rem;

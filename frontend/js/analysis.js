@@ -1,4 +1,5 @@
 const statusEl = document.querySelector("[data-status]");
+const matchCardEl = document.querySelector(".analysis-match-card");
 const badgesEl = document.querySelector("[data-match-badges]");
 const matchDetailEl = document.querySelector("[data-match-detail]");
 const homeTeamLinkEl = document.querySelector("[data-home-team-link]");
@@ -57,6 +58,7 @@ function renderAnalysis(data) {
 }
 
 function renderMatchHeader(match) {
+  applyMatchVisuals(match);
   badgesEl.innerHTML = `
     <span class="analysis-pill">${escapeHtml(match.competition || "Competition")}</span>
     <span class="analysis-pill analysis-pill-muted">${escapeHtml(stageWithSeason(match))}</span>
@@ -116,11 +118,19 @@ function renderSummary(meta) {
       ? "Loaded from saved YouTube analysis"
       : "First 24 hours after full time";
   summaryEl.innerHTML = `
-    ${metricCard("Overall vibe", meta.overall_vibe?.label || "Forgettable", meta.overall_vibe?.subtext || "", true)}
-    ${metricCard("Crowd energy", meta.crowd_energy?.label || "Quiet", meta.crowd_energy?.subtext || "", true)}
+    ${metricCard("Overall vibe", analysisLabel(meta.overall_vibe), analysisSubtext(meta.overall_vibe), true)}
+    ${metricCard("Crowd energy", analysisLabel(meta.crowd_energy), analysisSubtext(meta.crowd_energy), true)}
     ${metricCard(isEventFallback ? "Peak event window" : "Peak reaction window", peakLabel, peakSubtext, false)}
     ${metricCard("Comments analysed", formatNumber(meta.total_comments), commentsSubtext, false)}
   `;
+}
+
+function analysisLabel(value) {
+  return value?.label || "Unavailable";
+}
+
+function analysisSubtext(value) {
+  return value?.subtext || "Analysis output unavailable";
 }
 
 function metricCard(label, value, subtext, accent) {
@@ -184,7 +194,8 @@ function renderChart(buckets, meta = {}) {
           label: datasetLabel,
           data: chartPoints,
           borderColor: "#C8FF47",
-          borderWidth: 2.5,
+          backgroundColor: chartFillGradient,
+          borderWidth: 2.4,
           pointBackgroundColor: "#C8FF47",
           pointBorderColor: "#C8FF47",
           pointRadius: chartPoints.map((point) => {
@@ -197,28 +208,42 @@ function renderChart(buckets, meta = {}) {
           }),
           tension: 0.35,
           clip: false,
-          fill: false,
+          fill: true,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: {
+          top: 8,
+          right: 10,
+          bottom: 0,
+          left: 4,
+        },
+      },
+      interaction: {
+        mode: "nearest",
+        intersect: false,
+      },
       scales: {
         y: {
           min: 0,
           max: 100,
-          title: { display: true, text: yTitle, color: "#505058" },
-          ticks: { color: "#505058", font: { size: 11 } },
-          grid: { color: "#242428" },
+          border: { display: false },
+          title: { display: true, text: yTitle, color: "#5d5d66" },
+          ticks: { color: "#55555f", font: { size: 11 } },
+          grid: { color: "rgba(255, 255, 255, 0.045)" },
         },
         x: {
           type: "linear",
           min: 0,
           max: xMax,
-          title: { display: true, text: xTitle, color: "#505058" },
+          border: { display: false },
+          title: { display: true, text: xTitle, color: "#5d5d66" },
           ticks: {
-            color: "#505058",
+            color: "#55555f",
             font: { size: 11 },
             stepSize: xStep,
             callback(value) {
@@ -226,7 +251,7 @@ function renderChart(buckets, meta = {}) {
               return value === 0 ? "FT" : `${value}h`;
             },
           },
-          grid: { color: "#242428" },
+          grid: { color: "rgba(255, 255, 255, 0.04)" },
         },
       },
       plugins: {
@@ -339,6 +364,39 @@ function restoreChartCanvas(isEventFallback = false) {
   `;
 }
 
+function applyMatchVisuals(match) {
+  if (!matchCardEl || !window.AtmosTeamVisuals || !match) return;
+  const home = window.AtmosTeamVisuals.fromServer(match.home_visual, match.home_team_id, match.home);
+  const away = window.AtmosTeamVisuals.fromServer(match.away_visual, match.away_team_id, match.away);
+  matchCardEl.style.setProperty("--home-primary", home.primary);
+  matchCardEl.style.setProperty("--home-glow", home.glow);
+  matchCardEl.style.setProperty("--home-soft-glow", home.softGlow);
+  matchCardEl.style.setProperty("--away-primary", away.primary);
+  matchCardEl.style.setProperty("--away-glow", away.glow);
+  matchCardEl.style.setProperty("--away-soft-glow", away.softGlow);
+  setCrestVisual(homeTeamLinkEl, home);
+  setCrestVisual(awayTeamLinkEl, away);
+}
+
+function setCrestVisual(target, visual) {
+  if (!target) return;
+  target.style.setProperty("--team-primary", visual.primary);
+  target.style.setProperty("--team-glow", visual.glow);
+  target.style.setProperty("--team-border", visual.border);
+  target.style.setProperty("--team-shadow", visual.shadow);
+}
+
+function chartFillGradient(context) {
+  const { chart } = context;
+  const { ctx, chartArea } = chart;
+  if (!chartArea) return "rgba(200, 255, 71, 0.16)";
+  const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+  gradient.addColorStop(0, "rgba(200, 255, 71, 0.34)");
+  gradient.addColorStop(0.42, "rgba(200, 255, 71, 0.14)");
+  gradient.addColorStop(1, "rgba(200, 255, 71, 0)");
+  return gradient;
+}
+
 const intensityZonePlugin = {
   id: "intensityZone",
   beforeDatasetsDraw(chart) {
@@ -346,9 +404,7 @@ const intensityZonePlugin = {
     if (!chartArea) return;
     const midY = scales.y.getPixelForValue(50);
     ctx.save();
-    ctx.fillStyle = "rgba(200,255,71,0.08)";
-    ctx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, midY - chartArea.top);
-    ctx.fillStyle = "rgba(80,80,88,0.15)";
+    ctx.fillStyle = "rgba(80, 80, 88, 0.08)";
     ctx.fillRect(chartArea.left, midY, chartArea.right - chartArea.left, chartArea.bottom - midY);
     ctx.restore();
   },
@@ -473,6 +529,7 @@ function eventLabel(type) {
   if (type === "missed-penalty") return "Missed penalty";
   if (type === "own-goal") return "Own goal";
   if (type === "yellow-card") return "Yellow card";
+  if (type === "second-yellow-card") return "Second yellow";
   if (type === "red-card") return "Red card";
   if (type === "substitution") return "Substitution";
   if (type === "var") return "VAR";

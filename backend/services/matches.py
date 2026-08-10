@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload, selectinload
 
-from backend.database.models import Competition, Fixture, FixtureEvent, FixtureEventSyncStatus, Team, YouTubeCommentCache
+from backend.database.models import Competition, Fixture, FixtureEvent, FixtureEventSyncStatus, Team, TeamVisualProfile, YouTubeCommentCache
 from backend.database.session import get_sessionmaker
 from backend.models.schemas import MatchEvent, MatchSummary, SearchNotice
 from backend.providers.api_football import ApiFootballClient
@@ -19,6 +19,7 @@ from backend.providers.errors import ProviderConfigError, ProviderRequestError, 
 from backend.repositories import football_data as repo
 from backend.services.sync import ensure_archive_scope_synced
 from backend.services.team_search import competition_aliases_for, parse_search_intent, resolve_team_search, unique_ints
+from backend.services.team_visuals import ensure_team_visual_profiles, team_visual_response
 
 
 class MatchDataError(RuntimeError):
@@ -210,10 +211,12 @@ async def recent_matches(limit: int = 18, competition: str | None = None) -> lis
                 limit=limit,
                 provider_competition_id=provider_competition_id,
             )
+            visual_profiles = await visual_profiles_for_fixtures(session, fixtures)
+            await session.commit()
     except SQLAlchemyError as exc:
         raise MatchDataError("Recent matches could not be loaded from the local database.") from exc
 
-    return fixtures_to_summaries(fixtures)
+    return fixtures_to_summaries(fixtures, visual_profiles=visual_profiles)
 
 
 async def search_matches(
@@ -253,13 +256,15 @@ async def search_matches(
                 provider_competition_id=provider_competition_id,
                 season_year=season,
             )
+            visual_profiles = await visual_profiles_for_fixtures(session, fixtures)
+            await session.commit()
     except SQLAlchemyError as exc:
         raise MatchDataError("Search results could not be loaded from the local database.") from exc
     except (ProviderConfigError, ProviderRequestError, ProviderResponseError) as exc:
         raise MatchDataError("Search identity could not be resolved through API-Football.") from exc
 
     return MatchSearchResult(
-        matches=fixtures_to_summaries(fixtures),
+        matches=fixtures_to_summaries(fixtures, visual_profiles=visual_profiles),
         notices=search_notices_from_sync_result(sync_result),
     )
 
@@ -433,8 +438,14 @@ async def analysis_match(match_id: str) -> tuple[MatchSummary, list[MatchEvent]]
                 fixture.event_sync_status = sync_status
                 await session.commit()
 
+            visual_profiles = await visual_profiles_for_fixtures(session, [fixture])
+            await session.commit()
             return (
-                fixture_to_summary(fixture, aggregate_score=aggregate_score_from_fixture(fixture, aggregate_candidates)),
+                fixture_to_summary(
+                    fixture,
+                    aggregate_score=aggregate_score_from_fixture(fixture, aggregate_candidates),
+                    visual_profiles=visual_profiles,
+                ),
                 fixture_events_to_summary(events),
             )
     except SQLAlchemyError as exc:
@@ -478,15 +489,45 @@ def provider_competition_id_for_code(competition: str | None) -> int | None:
     return provider_id
 
 
-def fixtures_to_summaries(fixtures: list[Fixture]) -> list[MatchSummary]:
+async def visual_profiles_for_fixtures(
+    session: AsyncSession,
+    fixtures: list[Fixture],
+) -> dict[int, TeamVisualProfile]:
+    teams = [
+        team
+        for fixture in fixtures
+        for team in [
+            fixture.home_team,
+            fixture.away_team,
+        ]
+        if team is not None and team.provider_team_id is not None
+    ]
+    unique_teams = {team.provider_team_id: team for team in teams}
+    return await ensure_team_visual_profiles(session, list(unique_teams.values()))
+
+
+def fixtures_to_summaries(
+    fixtures: list[Fixture],
+    *,
+    visual_profiles: dict[int, TeamVisualProfile] | None = None,
+) -> list[MatchSummary]:
     aggregate_scores = aggregate_scores_for_fixtures(fixtures)
     return [
-        fixture_to_summary(fixture, aggregate_score=aggregate_scores.get(fixture.provider_fixture_id))
+        fixture_to_summary(
+            fixture,
+            aggregate_score=aggregate_scores.get(fixture.provider_fixture_id),
+            visual_profiles=visual_profiles,
+        )
         for fixture in fixtures
     ]
 
 
-def fixture_to_summary(fixture: Fixture, aggregate_score: str | None = None) -> MatchSummary:
+def fixture_to_summary(
+    fixture: Fixture,
+    aggregate_score: str | None = None,
+    *,
+    visual_profiles: dict[int, TeamVisualProfile] | None = None,
+) -> MatchSummary:
     home_team = fixture.home_team
     away_team = fixture.away_team
     competition = fixture.competition
@@ -505,6 +546,8 @@ def fixture_to_summary(fixture: Fixture, aggregate_score: str | None = None) -> 
         away_tla=team_code(away_team),
         home_crest=home_team.logo_url,
         away_crest=away_team.logo_url,
+        home_visual=team_visual_response((visual_profiles or {}).get(home_team.provider_team_id)),
+        away_visual=team_visual_response((visual_profiles or {}).get(away_team.provider_team_id)),
         score=score_label(fixture.home_goals, fixture.away_goals),
         score_note=score_note(fixture),
         penalty_score=penalty_score_label(fixture),
@@ -770,23 +813,27 @@ def safe_goal(value: int | None) -> int:
 
 
 def fixture_events_to_summary(events: list[FixtureEvent]) -> list[MatchEvent]:
-    return [
-        MatchEvent(
-            minute=event.minute or 0,
-            display_minute=event_minute_label(event),
-            type=event_type(event),
-            description=event_description(event),
+    summaries: list[MatchEvent] = []
+    sorted_events = sorted(events, key=lambda item: ((item.minute or 0), (item.extra_minute or 0), item.id))
+    for event in sorted_events:
+        if not is_key_event(event) or is_duplicate_second_yellow_event(event, sorted_events):
+            continue
+        summaries.append(
+            MatchEvent(
+                minute=event.minute or 0,
+                display_minute=event_minute_label(event),
+                type=event_type(event, sorted_events),
+                description=event_description(event, sorted_events),
+            )
         )
-        for event in sorted(events, key=lambda item: ((item.minute or 0), (item.extra_minute or 0), item.id))
-        if is_key_event(event)
-    ]
+    return summaries
 
 
 def event_minute_label(event: FixtureEvent) -> str:
     minute = event.minute or 0
     extra = event.extra_minute or 0
     if extra > 0:
-        return f"{minute}'+{extra}'"
+        return f"{minute}+{extra}'"
     return f"{minute}'"
 
 
@@ -800,7 +847,7 @@ def is_key_event(event: FixtureEvent) -> bool:
     return False
 
 
-def event_type(event: FixtureEvent) -> str:
+def event_type(event: FixtureEvent, fixture_events: list[FixtureEvent] | None = None) -> str:
     event_type_clean = (event.type or "").strip().lower()
     detail = (event.detail or "").strip().lower()
     comments = (event.comments or "").strip().lower()
@@ -816,6 +863,8 @@ def event_type(event: FixtureEvent) -> str:
         return "substitution"
     if event_type_clean == "var":
         return "var"
+    if is_second_yellow_card_event(event, fixture_events or []):
+        return "second-yellow-card"
     if event_type_clean == "card" and "red" in detail:
         return "red-card"
     if "penalty" in detail or "penalty" in comments:
@@ -823,10 +872,10 @@ def event_type(event: FixtureEvent) -> str:
     return "yellow-card"
 
 
-def event_description(event: FixtureEvent) -> str:
+def event_description(event: FixtureEvent, fixture_events: list[FixtureEvent] | None = None) -> str:
     player = event.player_name or "Unknown player"
     assist = event.assist_player_name
-    event_kind = event_type(event)
+    event_kind = event_type(event, fixture_events)
     team_suffix = event_team_suffix(event.team)
 
     if event_kind == "substitution":
@@ -859,12 +908,44 @@ def event_detail_label(event: FixtureEvent) -> str:
         "missed-penalty": "Missed penalty",
         "own-goal": "Own goal",
         "yellow-card": "Yellow card",
+        "second-yellow-card": "Second yellow",
         "red-card": "Red card",
         "substitution": "Substitution",
         "var": normalise_var_detail(event.detail),
         "penalty": "Penalty",
     }
     return labels.get(event_kind, clean_event_detail(event.detail or event.type))
+
+
+def is_second_yellow_card_event(event: FixtureEvent, fixture_events: list[FixtureEvent]) -> bool:
+    detail = (event.detail or "").strip().lower()
+    comments = (event.comments or "").strip().lower()
+    if "second yellow" in detail or "second yellow" in comments:
+        return True
+    if "red" not in detail:
+        return False
+    return any(is_matching_same_minute_yellow(event, other) for other in fixture_events)
+
+
+def is_duplicate_second_yellow_event(event: FixtureEvent, fixture_events: list[FixtureEvent]) -> bool:
+    if event_type(event, []) != "yellow-card":
+        return False
+    return any(is_matching_same_minute_yellow(other, event) for other in fixture_events if other is not event)
+
+
+def is_matching_same_minute_yellow(red_event: FixtureEvent, yellow_event: FixtureEvent) -> bool:
+    red_detail = (red_event.detail or "").strip().lower()
+    yellow_detail = (yellow_event.detail or "").strip().lower()
+    if "red" not in red_detail or "yellow" not in yellow_detail:
+        return False
+    return (
+        red_event.player_name
+        and yellow_event.player_name
+        and red_event.player_name == yellow_event.player_name
+        and red_event.team_id == yellow_event.team_id
+        and (red_event.minute or 0) == (yellow_event.minute or 0)
+        and (red_event.extra_minute or 0) == (yellow_event.extra_minute or 0)
+    )
 
 
 def normalise_var_detail(detail: str | None) -> str:

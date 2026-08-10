@@ -25,6 +25,14 @@
 }
 
 .team-hero {
+  --team-primary: var(--accent);
+  --team-secondary: #1d2418;
+  --team-glow: rgba(200, 255, 71, 0.18);
+  --team-soft-glow: rgba(200, 255, 71, 0.1);
+  --team-border: rgba(200, 255, 71, 0.5);
+  --team-shadow: rgba(200, 255, 71, 0.24);
+  position: relative;
+  overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(180px, 22vw, 260px);
   column-gap: 48px;
@@ -32,9 +40,25 @@
   padding: 34px;
   align-items: center;
   align-content: end;
+  background:
+    radial-gradient(circle at 83% 50%, var(--team-glow) 0, transparent 34%),
+    linear-gradient(110deg, rgba(31, 31, 36, 0.96), var(--team-soft-glow)),
+    var(--surface);
+}
+
+.team-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 83% 50%, var(--team-soft-glow) 0, transparent 48%),
+    linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.18) 100%);
 }
 
 .team-hero-copy {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-column: 1;
   gap: 14px;
@@ -66,13 +90,34 @@
   line-height: 1.55;
 }
 
-.team-hero-logo {
+.team-hero-logo-shell {
+  position: relative;
+  z-index: 1;
   grid-column: 2;
   grid-row: 1;
+  display: grid;
+  place-items: center;
   justify-self: center;
   align-self: center;
-  width: clamp(150px, 17vw, 230px);
-  max-height: 230px;
+  width: clamp(170px, 19vw, 250px);
+  aspect-ratio: 1;
+  border: 1px solid var(--team-border);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 44%, var(--team-soft-glow) 0, rgba(17, 17, 20, 0.9) 68%),
+    linear-gradient(140deg, rgba(255, 255, 255, 0.08), transparent 42%);
+  box-shadow:
+    0 0 0 6px rgba(0, 0, 0, 0.16),
+    0 0 48px var(--team-shadow);
+}
+
+.team-hero-logo-shell[hidden] {
+  display: none;
+}
+
+.team-hero-logo {
+  width: 68%;
+  max-height: 68%;
   object-fit: contain;
   opacity: 0.95;
 }
@@ -185,16 +230,34 @@
 
   .team-hero {
     grid-template-columns: 1fr;
+    gap: 22px;
     min-height: 180px;
     padding: 24px;
+    background:
+      radial-gradient(circle at 48% 72%, var(--team-glow) 0, transparent 42%),
+      linear-gradient(150deg, rgba(31, 31, 36, 0.96), var(--team-soft-glow)),
+      var(--surface);
   }
 
-  .team-hero-logo {
+  .team-hero::before {
+    background:
+      radial-gradient(circle at 48% 72%, var(--team-soft-glow) 0, transparent 56%),
+      linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.16) 100%);
+  }
+
+  .team-hero [data-team-summary] {
+    max-width: 100%;
+    color: #b6b6bf;
+    font-size: 0.92rem;
+    line-height: 1.45;
+  }
+
+  .team-hero-logo-shell {
     grid-column: 1;
     grid-row: auto;
     justify-self: start;
     width: min(48vw, 150px);
-    max-height: 150px;
+    margin-top: 4px;
   }
 
   .team-facts,

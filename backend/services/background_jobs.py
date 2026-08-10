@@ -12,7 +12,7 @@ from backend.database.models import Fixture, FixtureEvent
 from backend.database.session import get_sessionmaker
 from backend.models.schemas import MatchSummary
 from backend.repositories import football_data as repo
-from backend.services.matches import fixture_to_summary, hydrate_fixture_events
+from backend.services.matches import fixture_to_summary, hydrate_fixture_events, visual_profiles_for_fixtures
 from backend.services.sync import ensure_archive_scope_synced
 from backend.services.youtube_cache import fetch_and_cache_youtube_comment_count
 
@@ -237,7 +237,11 @@ async def match_summary_for_provider_fixture_id(provider_fixture_id: int) -> Mat
                 Fixture.provider_fixture_id == provider_fixture_id,
             )
         )
-        return fixture_to_summary(fixture) if fixture is not None else None
+        if fixture is None:
+            return None
+        visual_profiles = await visual_profiles_for_fixtures(session, [fixture])
+        await session.commit()
+        return fixture_to_summary(fixture, visual_profiles=visual_profiles)
 
 
 def provider_fixture_ids_from_matches(matches: list[MatchSummary]) -> list[int]:

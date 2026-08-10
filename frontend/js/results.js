@@ -158,9 +158,12 @@ function matchCard(match) {
   return `
     <button class="match-row" data-match="${encodeURIComponent(JSON.stringify(match))}">
       <span class="match-row-meta">
-        <em>${match.competition}</em>
+        <em>
+          <span class="match-row-competition-full">${match.competition}</span>
+          <span class="match-row-competition-short" aria-hidden="true">${shortCompetitionName(match.competition)}</span>
+        </em>
         <small class="match-row-stage">${stageWithSeason(match)}</small>
-        <small>${formatDate(match.date)}</small>
+        <small class="match-row-date">${formatDate(match.date)}</small>
       </span>
       <span class="match-row-main">
         <strong class="match-team match-team-home">${teamCrest(match.home_crest, match.home)}<span>${displayTeamName(match, "home")}</span></strong>
@@ -197,14 +200,14 @@ function youtubeCommentLabel(match) {
   const sampledCount = Number.isInteger(match.youtube_comment_count) ? match.youtube_comment_count : null;
   const count = analysedCount ?? sampledCount;
   if (status === "complete" && count !== null) {
-    return `${formatNumber(count)} ${count === 1 ? "comment" : "comments"} analysed from selected YouTube highlight videos`;
+    return `${formatNumber(count)} ${count === 1 ? "comment" : "comments"} analysed`;
   }
-  if (status === "pending") return "Analysing selected YouTube highlight videos";
-  if (status === "no_comments") return "No public comments found in selected highlight videos";
-  if (status === "unavailable") return "No suitable YouTube highlight videos found";
-  if (status === "rate_limited") return "YouTube comment analysis temporarily rate limited";
+  if (status === "pending") return "Analysing comments";
+  if (status === "no_comments") return "No public comments found";
+  if (status === "unavailable") return "No highlight videos found";
+  if (status === "rate_limited") return "Comment analysis rate limited";
   if (status === "failed") return "Comment analysis unavailable";
-  return "YouTube comment analysis not started";
+  return "Comment analysis not started";
 }
 
 function scheduleCommentPoll(matches) {
@@ -227,6 +230,19 @@ function clearCommentPoll() {
 
 function stageWithSeason(match) {
   return [match.round || "Stage unavailable", match.season].filter(Boolean).join(" · ");
+}
+
+function shortCompetitionName(name) {
+  const clean = String(name || "").trim();
+  const replacements = {
+    "UEFA Champions League": "UCL",
+    "UEFA Europa League": "UEL",
+    "UEFA Conference League": "UECL",
+    "Premier League": "PL",
+    "Belgian Pro League": "Belgian PL",
+    "Turkish Super Lig": "Super Lig",
+  };
+  return replacements[clean] || clean;
 }
 
 function displayTeamName(match, side) {

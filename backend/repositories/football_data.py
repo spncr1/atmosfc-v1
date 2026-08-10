@@ -7,7 +7,7 @@ from typing import Any
 import re
 import unicodedata
 
-from sqlalchemy import delete, or_, func, select, update
+from sqlalchemy import and_, delete, or_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, joinedload
 
@@ -24,12 +24,17 @@ from backend.database.models import (
     SyncRun,
     Team,
     TeamProfileEnrichment,
+    TeamVisualProfile,
     YouTubeCommentCache,
 )
 
 PROVIDER = "api_football"
 FINISHED_STATUS_CODES = {"FT", "AET", "PEN"}
 FINISHED_ARCHIVE_SYNC_STATUSES = {"complete", "partial", "failed", "provider_unavailable"}
+PROTECTED_VISUAL_STATUSES = ("known", "manual_verified")
+PROTECTED_VISUAL_SOURCES = ("manual_registry", "manual_verified")
+HANDLED_VISUAL_SOURCES = ("manual_registry", "manual_verified", "logo_extracted", "fallback_unknown")
+RETRYABLE_VISUAL_UNKNOWN_REASONS = ("pillow_unavailable", "logo_fetch_failed")
 
 
 async def upsert_season(session: AsyncSession, year: int, *, is_current: bool = False) -> Season:
@@ -138,6 +143,7 @@ async def upsert_team(session: AsyncSession, raw: dict[str, Any]) -> Team:
     else:
         _assign(team, values)
     await session.flush()
+    await link_team_visual_profile(session, team)
     return team
 
 
@@ -156,6 +162,12 @@ async def upsert_teams(session: AsyncSession, rows: list[dict[str, Any]]) -> dic
         else:
             _assign(team, values)
         teams[provider_id] = team
+    await session.flush()
+    visual_profiles = await team_visual_profiles_by_provider_ids(session, list(teams.keys()))
+    for provider_id, team in teams.items():
+        visual_profile = visual_profiles.get(provider_id)
+        if visual_profile is not None and visual_profile.team_id != team.id:
+            visual_profile.team_id = team.id
     await session.flush()
     return teams
 
@@ -632,6 +644,73 @@ async def team_by_provider_id(session: AsyncSession, provider_team_id: int | Non
     )
 
 
+async def link_team_visual_profile(session: AsyncSession, team: Team) -> None:
+    visual_profile = await team_visual_profile_by_provider_id(session, team.provider_team_id)
+    if visual_profile is not None and visual_profile.team_id != team.id:
+        visual_profile.team_id = team.id
+        await session.flush()
+
+
+async def team_visual_profile_by_provider_id(
+    session: AsyncSession,
+    provider_team_id: int | None,
+) -> TeamVisualProfile | None:
+    if provider_team_id is None:
+        return None
+    return await session.scalar(
+        select(TeamVisualProfile).where(
+            TeamVisualProfile.provider == PROVIDER,
+            TeamVisualProfile.provider_team_id == provider_team_id,
+        )
+    )
+
+
+async def team_visual_profiles_by_provider_ids(
+    session: AsyncSession,
+    provider_team_ids: list[int],
+) -> dict[int, TeamVisualProfile]:
+    clean_ids = {int(team_id) for team_id in provider_team_ids if team_id is not None}
+    if not clean_ids:
+        return {}
+    rows = await session.scalars(
+        select(TeamVisualProfile).where(
+            TeamVisualProfile.provider == PROVIDER,
+            TeamVisualProfile.provider_team_id.in_(clean_ids),
+        )
+    )
+    return {profile.provider_team_id: profile for profile in rows}
+
+
+async def upsert_team_visual_profile(
+    session: AsyncSession,
+    team: Team,
+    *,
+    primary_colour: str,
+    secondary_colour: str | None = None,
+    colour_source: str,
+    colour_status: str,
+    raw_payload: dict[str, Any] | None = None,
+) -> TeamVisualProfile:
+    visual_profile = await team_visual_profile_by_provider_id(session, team.provider_team_id)
+    values = {
+        "team_id": team.id,
+        "provider": PROVIDER,
+        "provider_team_id": team.provider_team_id,
+        "primary_colour": primary_colour,
+        "secondary_colour": secondary_colour,
+        "colour_source": colour_source,
+        "colour_status": colour_status,
+        "raw_payload": raw_payload,
+    }
+    if visual_profile is None:
+        visual_profile = TeamVisualProfile(**values)
+        session.add(visual_profile)
+    else:
+        _assign(visual_profile, values)
+    await session.flush()
+    return visual_profile
+
+
 async def teams_by_provider_ids(session: AsyncSession, provider_team_ids: list[int]) -> dict[int, Team]:
     if not provider_team_ids:
         return {}
@@ -642,6 +721,35 @@ async def teams_by_provider_ids(session: AsyncSession, provider_team_ids: list[i
         )
     )
     return {team.provider_team_id: team for team in rows}
+
+
+async def teams_for_visual_profile_backfill(session: AsyncSession, limit: int = 100) -> list[Team]:
+    rows = await session.scalars(
+        select(Team)
+        .outerjoin(
+            TeamVisualProfile,
+            (TeamVisualProfile.provider == Team.provider)
+            & (TeamVisualProfile.provider_team_id == Team.provider_team_id),
+        )
+        .where(
+            Team.provider == PROVIDER,
+            Team.logo_url.is_not(None),
+            or_(
+                TeamVisualProfile.id.is_(None),
+                and_(
+                    TeamVisualProfile.colour_status.not_in(PROTECTED_VISUAL_STATUSES),
+                    TeamVisualProfile.colour_source.not_in(HANDLED_VISUAL_SOURCES),
+                ),
+                and_(
+                    TeamVisualProfile.colour_source == "fallback_unknown",
+                    TeamVisualProfile.raw_payload["reason"].astext.in_(RETRYABLE_VISUAL_UNKNOWN_REASONS),
+                ),
+            ),
+        )
+        .order_by(Team.name.asc())
+        .limit(limit)
+    )
+    return list(rows)
 
 
 async def team_profile_enrichment_for_team(
@@ -1086,6 +1194,7 @@ async def table_counts(session: AsyncSession) -> dict[str, int]:
         "seasons": Season,
         "competition_seasons": CompetitionSeason,
         "teams": Team,
+        "team_visual_profiles": TeamVisualProfile,
         "fixtures": Fixture,
         "fixture_events": FixtureEvent,
         "fixture_event_sync_status": FixtureEventSyncStatus,

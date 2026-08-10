@@ -105,6 +105,12 @@ class Team(Base, TimestampMixin):
     venue_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    visual_profile: Mapped[TeamVisualProfile | None] = relationship(
+        "TeamVisualProfile",
+        back_populates="team",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
     profile_enrichment: Mapped[TeamProfileEnrichment | None] = relationship(
         back_populates="team",
         cascade="all, delete-orphan",
@@ -116,6 +122,28 @@ class Team(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("provider", "provider_team_id", name="uq_teams_provider_id"),
         Index("ix_teams_name", "name"),
+    )
+
+
+class TeamVisualProfile(Base, TimestampMixin):
+    __tablename__ = "team_visual_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"), nullable=True)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False, default="api_football")
+    provider_team_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    primary_colour: Mapped[str] = mapped_column(String(16), nullable=False)
+    secondary_colour: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    colour_source: Mapped[str] = mapped_column(String(80), nullable=False, default="manual_registry")
+    colour_status: Mapped[str] = mapped_column(String(40), nullable=False, default="known")
+    raw_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    team: Mapped[Team | None] = relationship("Team", back_populates="visual_profile")
+
+    __table_args__ = (
+        UniqueConstraint("team_id", name="uq_team_visual_profiles_team"),
+        UniqueConstraint("provider", "provider_team_id", name="uq_team_visual_profiles_provider_team"),
+        Index("ix_team_visual_profiles_status", "colour_status"),
     )
 
 
