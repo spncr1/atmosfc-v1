@@ -16,6 +16,7 @@ let competitionLabels = {};
 init();
 
 async function init() {
+  renderHomeAmbientSignal();
   const metadata = await loadMetadata();
   renderFilters(metadata);
   competitionLabels = labelsByCode(metadata.competitions);
@@ -24,6 +25,18 @@ async function init() {
     input.addEventListener("change", () => loadRecentMatches(input.value));
   });
   await loadRecentMatches();
+}
+
+function renderHomeAmbientSignal() {
+  if (!window.AtmosAmbientSignal) return;
+
+  window.AtmosAmbientSignal.render({
+    mode: "signal",
+    variant: "home",
+    color: "var(--accent)",
+    buckets: [34, 42, 38, 58, 46, 66, 54, 70, 62],
+    peakIndex: 7,
+  });
 }
 
 async function loadRecentMatches(competition = selectedCompetition()) {

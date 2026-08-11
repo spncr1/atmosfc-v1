@@ -15,12 +15,25 @@ init();
 
 async function init() {
   if (!resultsGrid || !filterForm) return;
+  renderResultsAmbientSignal();
   const metadata = await loadMetadata();
   competitionLabels = labelsByCode(metadata.competitions);
   seasonLabels = labelsByYear(metadata.seasons);
   hydrateForm();
   filterForm.addEventListener("submit", handleFilter);
   await loadResults();
+}
+
+function renderResultsAmbientSignal() {
+  if (!window.AtmosAmbientSignal) return;
+
+  window.AtmosAmbientSignal.render({
+    mode: "signal",
+    variant: "results",
+    color: "var(--accent)",
+    buckets: [34, 42, 38, 58, 46, 66, 54, 70, 62],
+    peakIndex: 7,
+  });
 }
 
 async function loadMetadata() {

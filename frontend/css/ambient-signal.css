@@ -1,0 +1,47 @@
+/* Shared page-level ambient signal layer */
+
+:root {
+  --ambient-signal-opacity: 0.3;
+  --ambient-signal-mobile-opacity: 0.22;
+}
+
+.ambient-signal {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  height: 100svh;
+  contain: layout paint size;
+  pointer-events: none;
+  opacity: var(--ambient-signal-opacity);
+}
+
+.ambient-signal[data-ambient-mode="bloom"] {
+  opacity: 0.3;
+}
+
+.has-ambient-signal > header,
+.has-ambient-signal > main {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 700px) {
+  .ambient-signal {
+    opacity: var(--ambient-signal-mobile-opacity);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-signal {
+    opacity: 0.28;
+  }
+}
+
+@media (forced-colors: active), print {
+  .ambient-signal {
+    display: none;
+  }
+}

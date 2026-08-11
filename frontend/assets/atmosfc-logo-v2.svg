@@ -2,11 +2,6 @@
   <title>Atmos FC logo</title>
   <defs>
     <clipPath id="lcc"><rect x="0" y="0" width="180" height="90"/></clipPath>
-    <linearGradient id="fadeup" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#141414" stop-opacity="0"/>
-      <stop offset="65%" stop-color="#141414" stop-opacity="0.85"/>
-      <stop offset="100%" stop-color="#141414" stop-opacity="1"/>
-    </linearGradient>
   </defs>
   <g clip-path="url(#lcc)" opacity="0.18" fill="#C8FF47">
     <circle cx="8"   cy="72" r="4"/><rect x="4"   y="77" width="8" height="7" rx="2"/>
@@ -38,7 +33,6 @@
   <circle cx="90" cy="14" r="4.5" fill="#C8FF47"/>
   <circle cx="90" cy="14" r="8" fill="none" stroke="#C8FF47" stroke-width="1" opacity="0.3"/>
   <circle cx="46" cy="66" r="3" fill="#505058"/>
-  <rect x="0" y="0" width="180" height="90" fill="url(#fadeup)"/>
   <text x="90" y="68" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="20" font-weight="500" fill="#FFFFFF" letter-spacing="-0.5" text-anchor="middle">atmos fc</text>
   <text x="90" y="82" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="9" font-weight="400" fill="#A0A0AA" letter-spacing="1.5" text-anchor="middle">MATCH SENTIMENT TRACKER</text>
 </svg>

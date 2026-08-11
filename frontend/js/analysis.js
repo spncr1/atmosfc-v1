@@ -30,6 +30,7 @@ init();
 async function init() {
   setupBackLink();
   setupChartHelp();
+  renderAmbientSignal();
   const stored = JSON.parse(sessionStorage.getItem("selectedMatch") || "null");
   if (stored) renderMatchHeader(stored);
 
@@ -173,6 +174,7 @@ function renderChart(buckets, meta = {}) {
     const current = buckets[best];
     return bucket.intensity > current.intensity ? index : best;
   }, -1);
+  renderAmbientSignal(buckets, peakIndex);
   const chartPoints = buckets.map((bucket, index) => ({
     x: bucket.hour_offset,
     y: bucket.intensity,
@@ -376,6 +378,18 @@ function applyMatchVisuals(match) {
   matchCardEl.style.setProperty("--away-soft-glow", away.softGlow);
   setCrestVisual(homeTeamLinkEl, home);
   setCrestVisual(awayTeamLinkEl, away);
+}
+
+function renderAmbientSignal(buckets = [], peakIndex = null) {
+  if (!window.AtmosAmbientSignal) return;
+
+  window.AtmosAmbientSignal.render({
+    mode: "signal",
+    variant: "analysis",
+    color: "var(--accent)",
+    buckets,
+    peakIndex,
+  });
 }
 
 function setCrestVisual(target, visual) {

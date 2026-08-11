@@ -219,6 +219,17 @@ function applyTeamVisual(teamId, teamName, serverVisual = null) {
   heroEl.style.setProperty("--team-soft-glow", visual.softGlow);
   heroEl.style.setProperty("--team-border", visual.border);
   heroEl.style.setProperty("--team-shadow", visual.shadow);
+  renderTeamAmbientSignal();
+}
+
+function renderTeamAmbientSignal() {
+  if (!window.AtmosAmbientSignal) return;
+
+  window.AtmosAmbientSignal.render({
+    mode: "bloom",
+    variant: "team",
+    color: "var(--accent)",
+  });
 }
 
 function safeUrl(value) {
