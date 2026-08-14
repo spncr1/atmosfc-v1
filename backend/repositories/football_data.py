@@ -1042,6 +1042,28 @@ async def finish_sync_run(
     await session.flush()
 
 
+async def latest_sync_run(session: AsyncSession, sync_type: str) -> SyncRun | None:
+    return await session.scalar(
+        select(SyncRun)
+        .where(SyncRun.provider == PROVIDER, SyncRun.sync_type == sync_type)
+        .order_by(SyncRun.started_at.desc(), SyncRun.id.desc())
+        .limit(1)
+    )
+
+
+async def latest_successful_sync_run(session: AsyncSession, sync_type: str) -> SyncRun | None:
+    return await session.scalar(
+        select(SyncRun)
+        .where(
+            SyncRun.provider == PROVIDER,
+            SyncRun.sync_type == sync_type,
+            SyncRun.status == "succeeded",
+        )
+        .order_by(SyncRun.finished_at.desc(), SyncRun.started_at.desc(), SyncRun.id.desc())
+        .limit(1)
+    )
+
+
 async def archive_sync_status_for(
     session: AsyncSession,
     *,

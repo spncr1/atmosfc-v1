@@ -4,7 +4,7 @@
     "builder": "RAILPACK"
   },
   "deploy": {
-    "startCommand": "sh -c 'python -m alembic upgrade head && python -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}'",
+    "startCommand": "python -m backend.scripts.railway_start",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",

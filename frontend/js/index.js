@@ -1,5 +1,6 @@
 const recentGrid = document.querySelector("[data-recent]");
 const recentHeading = document.querySelector("[data-recent-heading]");
+const recentSyncNotice = document.querySelector("[data-recent-sync]");
 const searchForm = document.querySelector("[data-search-form]");
 const competitionFilters = document.querySelector("[data-competition-filters]");
 const seasonFilters = document.querySelector("[data-season-filters]");
@@ -11,6 +12,7 @@ const AMERICAS_PLACEHOLDERS = [
   { code: "MLS", name: "Major League Soccer", short_name: "MLS", logo_url: "https://media.api-sports.io/football/leagues/253.png", disabled: true },
   { code: "MEX1", name: "Liga MX", short_name: "Liga MX", logo_url: "https://media.api-sports.io/football/leagues/262.png", disabled: true },
 ];
+const VISIBLE_SYNC_STATUSES = new Set(["stale", "missing", "failed", "running"]);
 let competitionLabels = {};
 
 init();
@@ -43,11 +45,48 @@ async function loadRecentMatches(competition = selectedCompetition()) {
   updateRecentHeading(competition);
   setStatus(recentGrid, loadingRecentMessage(competition));
   try {
-    const { matches } = await apiGet("/matches/recent", { limit: 12, competition });
+    const { matches, sync } = await apiGet("/matches/recent", { limit: 12, competition });
+    renderRecentSyncNotice(sync);
     renderMatches(recentGrid, matches);
   } catch (error) {
+    renderRecentSyncNotice(null);
     setStatus(recentGrid, error.message || "Could not load recent matches.");
   }
+}
+
+function renderRecentSyncNotice(sync) {
+  if (!recentSyncNotice) return;
+  if (!sync || sync.is_fresh || !VISIBLE_SYNC_STATUSES.has(sync.status)) {
+    recentSyncNotice.hidden = true;
+    recentSyncNotice.textContent = "";
+    return;
+  }
+  recentSyncNotice.textContent = syncNoticeMessage(sync);
+  recentSyncNotice.hidden = false;
+}
+
+function syncNoticeMessage(sync) {
+  if (sync.status === "stale") {
+    return `Recent matches may be behind. Last fixture sync finished ${formatSyncAge(sync.seconds_since_success)} ago.`;
+  }
+  if (sync.status === "running") {
+    return "Fixture sync is running now. Saved recent matches are shown until it finishes.";
+  }
+  if (sync.status === "failed") {
+    return "Recent matches may be behind. The latest fixture sync failed, so saved matches are being shown.";
+  }
+  return "Recent matches may be behind. The fixture sync has not completed yet.";
+}
+
+function formatSyncAge(seconds) {
+  if (!Number.isFinite(seconds)) return "an unknown time";
+  if (seconds < 60) return "under a minute";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  const days = Math.floor(hours / 24);
+  return `${days} ${days === 1 ? "day" : "days"}`;
 }
 
 async function loadMetadata() {

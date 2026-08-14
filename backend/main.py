@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from math import ceil
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import get_settings
@@ -30,6 +30,7 @@ from backend.services.matches import (
     recent_matches,
     search_matches,
 )
+from backend.services.sync import fixture_sync_status, sync_core_football_data
 from backend.services.youtube import YouTubeError, fetch_match_comments
 from backend.services.youtube_cache import cache_youtube_comment_batch, cache_youtube_comment_error
 from backend.services.sentiment import analyse_comments, energy_label
@@ -60,6 +61,30 @@ async def debug_config() -> dict[str, list[str]]:
     # Return non-secret runtime config useful for deployment checks.
 
     return {"allowed_origins": settings.allowed_origins}
+
+
+@app.get("/sync/fixture-status")
+async def get_fixture_sync_status():
+    # Return whether the API-Football fixture sync is keeping match data fresh.
+
+    return await fixture_sync_status()
+
+
+@app.post("/sync/fixture-refresh")
+async def refresh_fixture_sync(
+    recent_limit: int = Query(default=30, ge=1, le=50),
+    include_events: bool = False,
+    sync_admin_token: str | None = Header(default=None, alias="X-Sync-Admin-Token"),
+):
+    # Manually refresh recent API-Football fixtures when the scheduled worker falls behind.
+
+    require_sync_admin_token(sync_admin_token)
+    try:
+        result = await sync_core_football_data(recent_limit=recent_limit, include_events=include_events)
+        sync = await fixture_sync_status()
+        return {"result": result, "sync": sync}
+    except FootballDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/metadata", response_model=MetadataResponse)
@@ -93,7 +118,8 @@ async def get_recent_matches(
 
     try:
         matches = await recent_matches(limit=limit, competition=competition)
-        return {"matches": matches}
+        sync = await fixture_sync_status()
+        return {"matches": matches, "sync": sync}
     except MatchDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -206,6 +232,13 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except FootballDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+def require_sync_admin_token(sync_admin_token: str | None) -> None:
+    if not settings.sync_admin_token:
+        raise HTTPException(status_code=503, detail="Manual fixture sync is not configured.")
+    if sync_admin_token != settings.sync_admin_token:
+        raise HTTPException(status_code=401, detail="Invalid sync admin token.")
 
 
 def _score_margin(raw_match: dict) -> int:

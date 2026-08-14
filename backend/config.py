@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     )
     football_data_api_key: str = Field(default="", alias="FOOTBALL_DATA_API_KEY")
     youtube_api_key: str = Field(default="", alias="YOUTUBE_API_KEY")
+    sync_admin_token: str = Field(default="", alias="SYNC_ADMIN_TOKEN")
     database_url: str = Field(default="", alias="DATABASE_URL")
     direct_database_url: str = Field(default="", alias="DIRECT_DATABASE_URL")
     cors_origins: str = Field(

@@ -92,10 +92,8 @@
 
     drawBaseHaze(context, width, height, options.color);
 
-    if (width > COMPACT_SIGNAL_MAX_WIDTH) {
-      drawSignalEchoes(context, points, options.color, width, height);
-      drawRibbon(context, points, options.color, width);
-    }
+    drawSignalEchoes(context, points, options.color, width, height);
+    drawRibbon(context, points, options.color, width);
 
     drawPeaks(context, points, options);
   }
@@ -124,7 +122,8 @@
   }
 
   function drawBaseHaze(context, width, height, color) {
-    drawRadialGlow(context, width * 0.34, height * 0.3, Math.min(width * 0.36, 680), color, 0.045);
+    const compact = width <= COMPACT_SIGNAL_MAX_WIDTH;
+    drawRadialGlow(context, width * 0.34, height * 0.3, Math.min(width * (compact ? 0.58 : 0.36), 680), color, compact ? 0.07 : 0.045);
 
     if (width > 700) {
       drawRadialGlow(context, width * 0.62, height * 0.58, Math.min(width * 0.34, 620), color, 0.04);
@@ -133,23 +132,24 @@
   }
 
   function drawRibbon(context, points, color, width) {
+    const compact = width <= COMPACT_SIGNAL_MAX_WIDTH;
     const wide = width > 700;
-    const blur = wide ? 36 : 20;
-    const stroke = wide ? 22 : 12;
+    const blur = compact ? 14 : wide ? 36 : 20;
+    const stroke = compact ? 9 : wide ? 22 : 12;
 
     context.save();
-    context.shadowColor = withAlpha(color, 0.28);
+    context.shadowColor = withAlpha(color, compact ? 0.18 : 0.28);
     context.shadowBlur = blur;
     context.lineWidth = stroke;
     context.lineCap = "round";
     context.lineJoin = "round";
-    context.strokeStyle = withAlpha(color, 0.045);
+    context.strokeStyle = withAlpha(color, compact ? 0.055 : 0.045);
     tracePath(context, points);
     context.stroke();
 
     context.shadowBlur = blur * 0.45;
     context.lineWidth = Math.max(2, stroke * 0.28);
-    context.strokeStyle = withAlpha(color, 0.06);
+    context.strokeStyle = withAlpha(color, compact ? 0.08 : 0.06);
     tracePath(context, points);
     context.stroke();
     context.restore();
@@ -183,6 +183,37 @@
   }
 
   function signalEchoLayout(width, height) {
+    if (width <= COMPACT_SIGNAL_MAX_WIDTH) {
+      return [
+        {
+          scaleX: 0.74,
+          scaleY: 0.5,
+          offsetX: width * 0.12,
+          offsetY: height * 0.52,
+          alpha: 0.026,
+          shadowAlpha: 0.12,
+          blur: 14,
+          stroke: 7,
+          bloomIndex: 2,
+          bloomRadius: Math.min(width * 0.3, 116),
+          bloomAlpha: 0.06,
+        },
+        {
+          scaleX: 0.64,
+          scaleY: 0.42,
+          offsetX: width * 0.2,
+          offsetY: height * 0.78,
+          alpha: 0.02,
+          shadowAlpha: 0.09,
+          blur: 12,
+          stroke: 6,
+          bloomIndex: 6,
+          bloomRadius: Math.min(width * 0.26, 96),
+          bloomAlpha: 0.046,
+        },
+      ];
+    }
+
     const compact = width <= 900;
     return [
       {

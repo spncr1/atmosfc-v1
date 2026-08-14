@@ -62,6 +62,24 @@
   padding: 0 18px 18px;
 }
 
+.recent-sync-notice {
+  width: min(1000px, calc(100vw - 48px));
+  margin: 0 50% 16px;
+  padding: 12px 16px;
+  color: var(--ink);
+  background: rgba(190, 255, 50, 0.08);
+  border: 1px solid rgba(190, 255, 50, 0.26);
+  border-radius: 10px;
+  transform: translateX(-50%);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.recent-sync-notice[hidden] {
+  display: none;
+}
+
 /* FILTER LABELS */
 .search-field {
   display: block;

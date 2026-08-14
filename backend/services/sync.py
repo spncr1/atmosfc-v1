@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.session import get_sessionmaker
+from backend.database.session import get_async_engine, get_sessionmaker
 from backend.database.models import Competition, Fixture, Season, Team
 from backend.providers.api_football import ApiFootballClient
 from backend.repositories import football_data as repo
@@ -36,6 +39,32 @@ CORE_COMPETITIONS = [
 ]
 CORE_COMPETITION_IDS = {target.provider_id for target in CORE_COMPETITIONS}
 ARCHIVE_START_SEASON = 2010
+API_FOOTBALL_CORE_SYNC_TYPE = "api_football_core"
+API_FOOTBALL_CORE_LOCK_ID = 2026081401
+FIXTURE_SYNC_STALE_AFTER = timedelta(hours=2)
+
+
+@asynccontextmanager
+async def api_football_core_sync_lock() -> AsyncIterator[bool]:
+    engine = get_async_engine()
+    async with engine.connect() as connection:
+        acquired = bool(
+            await connection.scalar(
+                text("select pg_try_advisory_lock(:lock_id)"),
+                {"lock_id": API_FOOTBALL_CORE_LOCK_ID},
+            )
+        )
+        if not acquired:
+            yield False
+            return
+
+        try:
+            yield True
+        finally:
+            await connection.execute(
+                text("select pg_advisory_unlock(:lock_id)"),
+                {"lock_id": API_FOOTBALL_CORE_LOCK_ID},
+            )
 
 
 async def sync_core_football_data(
@@ -47,39 +76,133 @@ async def sync_core_football_data(
 ) -> dict[str, Any]:
     """Sync the first production MVP slice from API-Football into Postgres."""
 
-    client = ApiFootballClient()
-    sessionmaker = get_sessionmaker()
-    async with sessionmaker() as session:
-        await repo.mark_running_syncs_failed(session, "api_football_core", "Superseded by a new sync run.")
-        sync_run = await repo.create_sync_run(
-            session,
-            "api_football_core",
-            sync_metadata={
-                "requested_seasons": season_years,
-                "recent_limit": recent_limit,
-                "include_events": include_events,
-                "competition_ids": competition_ids,
-            },
-        )
-        await session.commit()
-        try:
-            result = await _sync_core(session, client, season_years, recent_limit, include_events, competition_ids)
-        except Exception as exc:
-            await session.rollback()
-            await repo.finish_sync_run(session, sync_run, status="failed", error_message=str(exc))
-            await session.commit()
-            raise
+    async with api_football_core_sync_lock() as lock_acquired:
+        if not lock_acquired:
+            return {
+                "status": "skipped",
+                "skip_reason": "api_football_core sync already running.",
+                "records_seen": 0,
+                "records_changed": 0,
+                "synced": {},
+                "sync_type": API_FOOTBALL_CORE_SYNC_TYPE,
+            }
 
-        await repo.finish_sync_run(
-            session,
-            sync_run,
-            status="succeeded",
-            records_seen=result["records_seen"],
-            records_changed=result["records_changed"],
-        )
-        result["table_counts"] = await repo.table_counts(session)
-        await session.commit()
-        return result
+        client = ApiFootballClient()
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as session:
+            await repo.mark_running_syncs_failed(
+                session,
+                API_FOOTBALL_CORE_SYNC_TYPE,
+                "Superseded by a new sync run.",
+            )
+            sync_run = await repo.create_sync_run(
+                session,
+                API_FOOTBALL_CORE_SYNC_TYPE,
+                sync_metadata={
+                    "requested_seasons": season_years,
+                    "recent_limit": recent_limit,
+                    "include_events": include_events,
+                    "competition_ids": competition_ids,
+                },
+            )
+            await session.commit()
+            try:
+                result = await _sync_core(session, client, season_years, recent_limit, include_events, competition_ids)
+            except Exception as exc:
+                await session.rollback()
+                await repo.finish_sync_run(session, sync_run, status="failed", error_message=str(exc))
+                await session.commit()
+                raise
+
+            await repo.finish_sync_run(
+                session,
+                sync_run,
+                status="succeeded",
+                records_seen=result["records_seen"],
+                records_changed=result["records_changed"],
+            )
+            result["table_counts"] = await repo.table_counts(session)
+            await session.commit()
+            return result
+
+
+async def fixture_sync_status() -> dict[str, Any]:
+    """Return whether the API-Football fixture sync is keeping the DB fresh."""
+
+    sessionmaker = get_sessionmaker()
+    now = datetime.now(timezone.utc)
+    async with sessionmaker() as session:
+        latest_run = await repo.latest_sync_run(session, API_FOOTBALL_CORE_SYNC_TYPE)
+        latest_success = await repo.latest_successful_sync_run(session, API_FOOTBALL_CORE_SYNC_TYPE)
+        latest_payload = sync_run_payload(latest_run)
+        latest_success_payload = sync_run_payload(latest_success)
+        last_success_finished_at = aware_utc(latest_success.finished_at) if latest_success else None
+
+    seconds_since_success = None
+    is_fresh = False
+    if last_success_finished_at is not None:
+        seconds_since_success = max(0, int((now - last_success_finished_at).total_seconds()))
+        is_fresh = seconds_since_success <= int(FIXTURE_SYNC_STALE_AFTER.total_seconds())
+
+    status = "missing"
+    message = "No API-Football fixture sync has run yet."
+    if latest_run and latest_run.status == "running":
+        status = "running"
+        message = "API-Football fixture sync is currently running."
+    elif latest_success and is_fresh:
+        status = "fresh"
+        message = "API-Football fixture data was synced recently."
+    elif latest_success:
+        status = "stale"
+        message = "API-Football fixture data is stale; the fixture sync worker should run."
+    elif latest_run and latest_run.status == "failed":
+        status = "failed"
+        message = "No successful API-Football fixture sync has completed."
+
+    return {
+        "sync_type": API_FOOTBALL_CORE_SYNC_TYPE,
+        "status": status,
+        "is_fresh": is_fresh,
+        "checked_at": now.isoformat(),
+        "stale_after_seconds": int(FIXTURE_SYNC_STALE_AFTER.total_seconds()),
+        "seconds_since_success": seconds_since_success,
+        "last_success_finished_at": (
+            last_success_finished_at.isoformat() if last_success_finished_at is not None else None
+        ),
+        "latest_run": latest_payload,
+        "latest_successful_run": latest_success_payload,
+        "message": message,
+    }
+
+
+def sync_run_payload(sync_run: Any | None) -> dict[str, Any] | None:
+    if sync_run is None:
+        return None
+    return {
+        "id": sync_run.id,
+        "provider": sync_run.provider,
+        "sync_type": sync_run.sync_type,
+        "status": sync_run.status,
+        "started_at": datetime_payload(sync_run.started_at),
+        "finished_at": datetime_payload(sync_run.finished_at),
+        "records_seen": sync_run.records_seen,
+        "records_changed": sync_run.records_changed,
+        "error_message": sync_run.error_message,
+        "metadata": sync_run.sync_metadata,
+    }
+
+
+def datetime_payload(value: datetime | None) -> str | None:
+    clean = aware_utc(value)
+    return clean.isoformat() if clean is not None else None
+
+
+def aware_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 async def _sync_core(
