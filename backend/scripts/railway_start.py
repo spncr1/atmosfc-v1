@@ -14,6 +14,10 @@ PROCESS_ALIASES = {
     "fixture_sync_worker": "fixture_sync_worker",
     "fixture-sync-worker": "fixture_sync_worker",
     "fixtures": "fixture_sync_worker",
+    "fixture_sync_once": "fixture_sync_once",
+    "fixture-sync-once": "fixture_sync_once",
+    "fixture_sync_cron": "fixture_sync_once",
+    "fixture-sync-cron": "fixture_sync_once",
 }
 
 
@@ -60,6 +64,15 @@ def main() -> None:
             "0.0.0.0",
             "--port",
             port,
+        )
+
+    if process_type == "fixture_sync_once":
+        recent_limit = os.getenv("FIXTURE_SYNC_RECENT_LIMIT", "50")
+        exec_module(
+            "backend.scripts.run_fixture_sync_worker",
+            "--once",
+            "--recent-limit",
+            recent_limit,
         )
 
     exec_module("backend.scripts.run_fixture_sync_worker")
