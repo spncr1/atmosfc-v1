@@ -24,7 +24,7 @@ class ApiFootballClient:
         timeout: float = 20.0,
     ) -> None:
         settings = get_settings()
-        self.api_key = api_key or settings.api_football_key
+        self.api_key = api_key or settings.api_football_api_key
         self.base_url = (base_url or settings.api_football_base_url).rstrip("/")
         self.timeout = timeout
         if not self.api_key:
