@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 
-    api_football_key: str = Field(default="", alias="API_FOOTBALL_KEY")
+    api_football_api_key: str = Field(default="", alias="API_FOOTBALL_API_KEY")
     api_football_base_url: str = Field(default="https://v3.football.api-sports.io", alias="API_FOOTBALL_BASE_URL")
     wikidata_api_url: str = Field(default="https://www.wikidata.org/w/api.php", alias="WIKIDATA_API_URL")
     wikidata_entity_data_url: str = Field(

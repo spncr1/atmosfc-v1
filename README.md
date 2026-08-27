@@ -76,7 +76,7 @@ Create `backend/.env` with the API keys required by the FastAPI service:
 
 ```bash
 FOOTBALL_DATA_API_KEY=your_football_data_api_key_goes_here
-API_FOOTBALL_KEY=your_api_football_key_goes_here
+API_FOOTBALL_API_KEY=your_api_football_key_goes_here
 DATABASE_URL=your_neon_pooled_connection_string
 DIRECT_DATABASE_URL=your_neon_direct_connection_string
 YOUTUBE_API_KEY=your_youtube_api_key_goes_here
@@ -98,7 +98,7 @@ The frontend reads its backend URL from `frontend/js/config.js` in production. A
 The Railway backend must have these environment variables:
 
 ```bash
-API_FOOTBALL_KEY=your_api_football_key_goes_here
+API_FOOTBALL_API_KEY=your_api_football_key_goes_here
 DATABASE_URL=your_neon_pooled_connection_string
 DIRECT_DATABASE_URL=your_neon_direct_connection_string
 FOOTBALL_DATA_API_KEY=your_football_data_api_key_goes_here

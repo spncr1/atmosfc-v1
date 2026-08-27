@@ -28,7 +28,7 @@ class ApiFootballClient:
         self.base_url = (base_url or settings.api_football_base_url).rstrip("/")
         self.timeout = timeout
         if not self.api_key:
-            raise ProviderConfigError("API_FOOTBALL_KEY is not configured.")
+            raise ProviderConfigError("API_FOOTBALL_API_KEY is not configured.")
 
     async def status(self) -> dict[str, Any]:
         """Return API account status and quota information."""
