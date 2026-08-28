@@ -16,7 +16,6 @@ from backend.models.schemas import (
     AnalyseMeta,
     MatchSearchResponse,
     MetadataResponse,
-    ReactionIntensityBucket,
     TeamProfileResponse,
 )
 from backend.repositories import football_data as repo
@@ -35,7 +34,7 @@ from backend.services.youtube import YouTubeError, fetch_match_comments
 from backend.services.youtube_cache import cache_youtube_comment_batch, cache_youtube_comment_error
 from backend.services.sentiment import analyse_comments, energy_label
 
-ANALYSIS_ALGORITHM_VERSION = "match_context_v1"
+ANALYSIS_ALGORITHM_VERSION = "match_context_v2"
 
 app = FastAPI(title="Atmos API", version="0.1.0")
 settings = get_settings()
@@ -194,7 +193,7 @@ async def analyse_match(payload: AnalyseRequest) -> AnalysisResponse:
             cached_response = await cached_analysis_response(match, events)
             if cached_response is not None:
                 return cached_response
-            return event_fallback_analysis_response(match, events)
+            return unavailable_youtube_analysis_response(match, events)
         kickoff = datetime.fromisoformat(match.date.replace("Z", "+00:00")).astimezone(timezone.utc)
         source_video_count = len({comment.permalink for comment in video_comments.comments}) or 1
         buckets, reaction_intensity, half_split, top_comments, peak_minute, peak_window, _youtube_vibe, _youtube_energy = analyse_comments(
@@ -308,14 +307,12 @@ def provider_fixture_id_from_match(match) -> int | None:
         return None
 
 
-def event_fallback_analysis_response(match, events) -> AnalysisResponse:
-    reaction_intensity = event_intensity_buckets(events)
-    peak_window = event_peak_window(reaction_intensity)
+def unavailable_youtube_analysis_response(match, events) -> AnalysisResponse:
     return AnalysisResponse(
         match=match,
         events=events,
         sentiment_buckets=[],
-        reaction_intensity=reaction_intensity,
+        reaction_intensity=[],
         top_comments=[],
         half_split={
             "first": {"pos": 0, "neg": 0, "neu": 0},
@@ -324,63 +321,18 @@ def event_fallback_analysis_response(match, events) -> AnalysisResponse:
         meta=AnalyseMeta(
             total_comments=0,
             peak_minute=0,
-            peak_window=peak_window,
+            peak_window={"hour_start": 0, "hour_end": 0},
             source_video_count=0,
-            overall_vibe=event_fallback_vibe(match, events),
-            crowd_energy=event_fallback_energy(events),
+            overall_vibe=match_context_vibe(match, events),
+            crowd_energy={
+                "label": "Unavailable",
+                "subtext": "24-hour reaction data unavailable for this match",
+            },
             youtube_video_url=None,
-            analysis_mode="event_fallback",
+            analysis_mode="youtube_unavailable",
             analysis_version=ANALYSIS_ALGORITHM_VERSION,
         ),
     )
-
-
-def event_intensity_buckets(events) -> list[ReactionIntensityBucket]:
-    buckets: list[ReactionIntensityBucket] = []
-    for start in [0, 15, 30, 45, 60, 75]:
-        end = start + 15
-        window_events = [
-            event
-            for event in events
-            if start <= int(getattr(event, "minute", 0) or 0) < end
-            or (end == 90 and int(getattr(event, "minute", 0) or 0) >= 90)
-        ]
-        intensity = min(100, sum(event_intensity_weight(getattr(event, "type", "")) for event in window_events))
-        buckets.append(
-            ReactionIntensityBucket(
-                hour_offset=start,
-                intensity=float(intensity),
-                sentiment=0.0,
-                comment_count=len(window_events),
-            )
-        )
-    return buckets
-
-
-def event_intensity_weight(event_type: str) -> int:
-    weights = {
-        "goal": 40,
-        "penalty-goal": 44,
-        "own-goal": 42,
-        "missed-penalty": 36,
-        "red-card": 32,
-        "var": 26,
-        "penalty": 24,
-        "yellow-card": 14,
-        "substitution": 8,
-    }
-    return weights.get(event_type, 8)
-
-
-def event_peak_window(buckets: list[ReactionIntensityBucket]) -> dict[str, int]:
-    if not buckets:
-        return {"hour_start": 0, "hour_end": 15}
-    peak = max(buckets, key=lambda bucket: bucket.intensity)
-    return {"hour_start": peak.hour_offset, "hour_end": min(90, peak.hour_offset + 15)}
-
-
-def event_fallback_vibe(match, events) -> dict[str, str]:
-    return match_context_vibe(match, events)
 
 
 def match_context_vibe(match, events) -> dict[str, str]:
@@ -418,24 +370,6 @@ def match_context_vibe(match, events) -> dict[str, str]:
     return {
         "label": label,
         "subtext": "Estimated from goals and key match events",
-    }
-
-
-def event_fallback_energy(events) -> dict[str, str]:
-    if not events:
-        return {
-            "label": "Unavailable",
-            "subtext": "No key events were available for this match",
-        }
-    if len(events) >= 14:
-        label = "High event load"
-    elif len(events) >= 7:
-        label = "Active timeline"
-    else:
-        label = "Low event load"
-    return {
-        "label": label,
-        "subtext": "Based on the match timeline, not YouTube comments",
     }
 
 

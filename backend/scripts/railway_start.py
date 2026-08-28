@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 
 PROCESS_ALIASES = {
@@ -18,6 +21,12 @@ PROCESS_ALIASES = {
     "fixture-sync-once": "fixture_sync_once",
     "fixture_sync_cron": "fixture_sync_once",
     "fixture-sync-cron": "fixture_sync_once",
+    "fixture_event_sync_once": "fixture_event_sync_once",
+    "fixture-event-sync-once": "fixture_event_sync_once",
+    "fixture_events_sync_once": "fixture_event_sync_once",
+    "fixture-events-sync-once": "fixture_event_sync_once",
+    "fixture_event_sync_cron": "fixture_event_sync_once",
+    "fixture-event-sync-cron": "fixture_event_sync_once",
 }
 
 
@@ -40,6 +49,38 @@ def run_migrations() -> None:
 
 def exec_module(module: str, *args: str) -> None:
     os.execvp(sys.executable, [sys.executable, "-m", module, *args])
+
+
+def run_fixture_event_sync_once() -> None:
+    from backend.services.sync import sync_recent_fixture_events
+
+    limit = int(os.getenv("FIXTURE_EVENT_SYNC_LIMIT", "50"))
+
+    async def runner() -> None:
+        print(
+            json.dumps(
+                {
+                    "message": "fixture_event_sync_started",
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                    "limit": limit,
+                }
+            ),
+            flush=True,
+        )
+        result = await sync_recent_fixture_events(limit=limit)
+        print(
+            json.dumps(
+                {
+                    "message": "fixture_event_sync_finished",
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "result": result,
+                },
+                default=str,
+            ),
+            flush=True,
+        )
+
+    asyncio.run(runner())
 
 
 def main() -> None:
@@ -74,6 +115,10 @@ def main() -> None:
             "--recent-limit",
             recent_limit,
         )
+
+    if process_type == "fixture_event_sync_once":
+        run_fixture_event_sync_once()
+        return
 
     exec_module("backend.scripts.run_fixture_sync_worker")
 

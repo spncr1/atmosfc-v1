@@ -107,21 +107,19 @@ function displayTeamName(match, side) {
 
 function renderSummary(meta) {
   const peak = meta.peak_window || { hour_start: 0, hour_end: 1 };
-  const isEventFallback = meta.analysis_mode === "event_fallback";
   const isCached = meta.analysis_mode === "cached_youtube_sentiment";
-  const peakLabel = isEventFallback
-    ? `Minutes ${peak.hour_start} – ${peak.hour_end}`
-    : `Hours ${peak.hour_start} – ${peak.hour_end}`;
-  const peakSubtext = isEventFallback ? "Highest event activity window" : "Strongest reaction window";
-  const commentsSubtext = isEventFallback
-    ? "YouTube unavailable; using match events"
+  const isUnavailable = meta.analysis_mode === "youtube_unavailable";
+  const peakLabel = isUnavailable ? "Unavailable" : `Hours ${peak.hour_start} – ${peak.hour_end}`;
+  const peakSubtext = isUnavailable ? reactionUnavailableMessage() : "Strongest reaction window";
+  const commentsSubtext = isUnavailable
+    ? reactionUnavailableMessage()
     : isCached
       ? "Loaded from saved YouTube analysis"
       : "First 24 hours after full time";
   summaryEl.innerHTML = `
     ${metricCard("Overall vibe", analysisLabel(meta.overall_vibe), analysisSubtext(meta.overall_vibe), true)}
     ${metricCard("Crowd energy", analysisLabel(meta.crowd_energy), analysisSubtext(meta.crowd_energy), true)}
-    ${metricCard(isEventFallback ? "Peak event window" : "Peak reaction window", peakLabel, peakSubtext, false)}
+    ${metricCard("Peak reaction window", peakLabel, peakSubtext, false)}
     ${metricCard("Comments analysed", formatNumber(meta.total_comments), commentsSubtext, false)}
   `;
 }
@@ -145,13 +143,10 @@ function metricCard(label, value, subtext, accent) {
 }
 
 function renderChart(buckets, meta = {}) {
-  const isEventFallback = meta.analysis_mode === "event_fallback";
   if (chartTitleEl) {
-    chartTitleEl.textContent = isEventFallback
-      ? "Atmos reaction intensity - 90 minutes"
-      : "Atmos reaction intensity - 24hrs after full time";
+    chartTitleEl.textContent = "Atmos reaction intensity - 24hrs after full time";
   }
-  restoreChartCanvas(isEventFallback);
+  restoreChartCanvas();
   const ctx = document.querySelector("#pulseChart");
   if (!ctx) return;
   if (pulseChart) pulseChart.destroy();
@@ -160,12 +155,12 @@ function renderChart(buckets, meta = {}) {
     return;
   }
   if (!buckets.length) {
-    showChartFallback("Atmos reaction intensity chart unavailable for this match.");
+    showChartFallback(reactionUnavailableMessage());
     return;
   }
-  const xMax = isEventFallback ? 90 : 24;
-  const xStep = isEventFallback ? 15 : 3;
-  const xTitle = isEventFallback ? "Match minute" : "Hours after full time";
+  const xMax = 24;
+  const xStep = 3;
+  const xTitle = "Hours after full time";
   const datasetLabel = "Atmos reaction intensity";
   const yTitle = "Reaction intensity score";
 
@@ -249,7 +244,6 @@ function renderChart(buckets, meta = {}) {
             font: { size: 11 },
             stepSize: xStep,
             callback(value) {
-              if (isEventFallback) return value === 0 ? "KO" : `${value}'`;
               return value === 0 ? "FT" : `${value}h`;
             },
           },
@@ -281,7 +275,7 @@ function renderChart(buckets, meta = {}) {
               const point = items[0]?.raw;
               const bucket = buckets[point?.bucketIndex];
               if (!bucket) return "";
-              return intensityWindowLabel(bucket, isEventFallback);
+              return intensityWindowLabel(bucket);
             },
             label(context) {
               const bucket = buckets[context.raw.bucketIndex];
@@ -289,7 +283,7 @@ function renderChart(buckets, meta = {}) {
             },
             afterLabel(context) {
               const bucket = buckets[context.raw.bucketIndex];
-              const lines = [intensityDataLabel(bucket, isEventFallback)];
+              const lines = [intensityDataLabel(bucket)];
               if (context.raw.bucketIndex === peakIndex) lines.push("Peak intensity window");
               return lines;
             },
@@ -333,20 +327,14 @@ function closeChartHelp() {
   chartHelpButton?.focus();
 }
 
-function intensityWindowLabel(bucket, isEventFallback) {
+function intensityWindowLabel(bucket) {
   const start = Number(bucket.hour_offset) || 0;
-  const end = start + (isEventFallback ? 15 : 1);
-  if (isEventFallback) {
-    return `${start}'–${Math.min(end, 90)}'`;
-  }
   return start === 0 ? "FT" : `${start}h after FT`;
 }
 
-function intensityDataLabel(bucket, isEventFallback) {
+function intensityDataLabel(bucket) {
   const count = formatNumber(bucket.comment_count);
-  return isEventFallback
-    ? `${count} key events in this window`
-    : `${count} comments analysed`;
+  return `${count} comments analysed`;
 }
 
 function showChartFallback(message) {
@@ -358,10 +346,10 @@ function showChartFallback(message) {
   }
 }
 
-function restoreChartCanvas(isEventFallback = false) {
+function restoreChartCanvas() {
   if (!chartWrapEl || chartWrapEl.querySelector("#pulseChart")) return;
   chartWrapEl.innerHTML = `
-    <canvas id="pulseChart" role="img" aria-label="${isEventFallback ? "Line chart showing Atmos reaction intensity over 90 minutes" : "Line chart showing Atmos reaction intensity over the 24 hours after full time"}">
+    <canvas id="pulseChart" role="img" aria-label="Line chart showing Atmos reaction intensity over the 24 hours after full time">
     </canvas>
   `;
 }
@@ -425,9 +413,7 @@ const intensityZonePlugin = {
 };
 
 function renderEvents(items, status = "unchecked") {
-  const fallback = status === "unavailable"
-    ? "Event feed checked. API-Football has no timeline detail for this match."
-    : "Event detail has not been loaded for this match yet.";
+  const fallback = eventTimelineMessage(status);
   eventsEl.innerHTML = items.length
     ? items.map((event) => `
       <li>
@@ -437,6 +423,17 @@ function renderEvents(items, status = "unchecked") {
       </li>
     `).join("")
     : `<li class="analysis-empty">${escapeHtml(fallback)}</li>`;
+}
+
+function eventTimelineMessage(status = "unchecked") {
+  if (status === "unavailable") return "Match event timeline is unavailable from API-Football.";
+  if (status === "failed") return "Match event data could not be refreshed right now.";
+  if (status === "pending") return "Match event timeline is still syncing. Try again shortly.";
+  return "Match event timeline is still syncing. Try again shortly.";
+}
+
+function reactionUnavailableMessage() {
+  return "24-hour reaction data unavailable for this match.";
 }
 
 function renderComments(items, videoUrl, status = "unchecked") {

@@ -893,6 +893,36 @@ async def recent_fixtures(
     return list(rows)
 
 
+async def recent_finished_fixtures_needing_events(
+    session: AsyncSession,
+    *,
+    limit: int,
+) -> list[Fixture]:
+    query = (
+        select(Fixture)
+        .options(
+            joinedload(Fixture.competition),
+            joinedload(Fixture.season),
+            joinedload(Fixture.home_team),
+            joinedload(Fixture.away_team),
+            joinedload(Fixture.event_sync_status),
+        )
+        .outerjoin(FixtureEventSyncStatus, FixtureEventSyncStatus.fixture_id == Fixture.id)
+        .where(
+            Fixture.provider == PROVIDER,
+            Fixture.status_short.in_(FINISHED_STATUS_CODES),
+            or_(
+                FixtureEventSyncStatus.id.is_(None),
+                FixtureEventSyncStatus.status.in_(("pending", "failed", "unknown")),
+            ),
+        )
+        .order_by(Fixture.kickoff_at.desc())
+        .limit(limit)
+    )
+    rows = await session.scalars(query)
+    return list(rows)
+
+
 async def search_fixtures(
     session: AsyncSession,
     *,

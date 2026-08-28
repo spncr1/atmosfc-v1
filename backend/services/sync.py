@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database.session import get_async_engine, get_sessionmaker
 from backend.database.models import Competition, Fixture, Season, Team
 from backend.providers.api_football import ApiFootballClient
+from backend.providers.errors import ProviderRequestError, ProviderResponseError
 from backend.repositories import football_data as repo
 
 
@@ -40,7 +41,9 @@ CORE_COMPETITIONS = [
 CORE_COMPETITION_IDS = {target.provider_id for target in CORE_COMPETITIONS}
 ARCHIVE_START_SEASON = 2010
 API_FOOTBALL_CORE_SYNC_TYPE = "api_football_core"
+API_FOOTBALL_EVENTS_SYNC_TYPE = "api_football_events"
 API_FOOTBALL_CORE_LOCK_ID = 2026081401
+API_FOOTBALL_EVENTS_LOCK_ID = 2026082801
 FIXTURE_SYNC_STALE_AFTER = timedelta(hours=2)
 
 
@@ -64,6 +67,29 @@ async def api_football_core_sync_lock() -> AsyncIterator[bool]:
             await connection.execute(
                 text("select pg_advisory_unlock(:lock_id)"),
                 {"lock_id": API_FOOTBALL_CORE_LOCK_ID},
+            )
+
+
+@asynccontextmanager
+async def api_football_events_sync_lock() -> AsyncIterator[bool]:
+    engine = get_async_engine()
+    async with engine.connect() as connection:
+        acquired = bool(
+            await connection.scalar(
+                text("select pg_try_advisory_lock(:lock_id)"),
+                {"lock_id": API_FOOTBALL_EVENTS_LOCK_ID},
+            )
+        )
+        if not acquired:
+            yield False
+            return
+
+        try:
+            yield True
+        finally:
+            await connection.execute(
+                text("select pg_advisory_unlock(:lock_id)"),
+                {"lock_id": API_FOOTBALL_EVENTS_LOCK_ID},
             )
 
 
@@ -124,6 +150,118 @@ async def sync_core_football_data(
             result["table_counts"] = await repo.table_counts(session)
             await session.commit()
             return result
+
+
+async def sync_recent_fixture_events(
+    *,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Hydrate event timelines for recent finished API-Football fixtures."""
+
+    clean_limit = max(1, limit)
+    async with api_football_events_sync_lock() as lock_acquired:
+        if not lock_acquired:
+            return {
+                "status": "skipped",
+                "skip_reason": "api_football_events sync already running.",
+                "records_seen": 0,
+                "records_changed": 0,
+                "synced": {},
+                "sync_type": API_FOOTBALL_EVENTS_SYNC_TYPE,
+            }
+
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as session:
+            await repo.mark_running_syncs_failed(
+                session,
+                API_FOOTBALL_EVENTS_SYNC_TYPE,
+                "Superseded by a new event sync run.",
+            )
+            sync_run = await repo.create_sync_run(
+                session,
+                API_FOOTBALL_EVENTS_SYNC_TYPE,
+                sync_metadata={"limit": clean_limit},
+            )
+            await session.commit()
+            try:
+                client = ApiFootballClient()
+                result = await _sync_recent_fixture_events(session, client, clean_limit)
+            except Exception as exc:
+                await session.rollback()
+                await repo.finish_sync_run(session, sync_run, status="failed", error_message=str(exc))
+                await session.commit()
+                raise
+
+            await repo.finish_sync_run(
+                session,
+                sync_run,
+                status="succeeded",
+                records_seen=result["records_seen"],
+                records_changed=result["records_changed"],
+            )
+            await session.commit()
+            result["status"] = "succeeded"
+            result["sync_type"] = API_FOOTBALL_EVENTS_SYNC_TYPE
+            return result
+
+
+async def _sync_recent_fixture_events(
+    session: AsyncSession,
+    client: ApiFootballClient,
+    limit: int,
+) -> dict[str, Any]:
+    fixtures = await repo.recent_finished_fixtures_needing_events(session, limit=limit)
+    records_seen = len(fixtures)
+    records_changed = 0
+    synced = {
+        "fixtures_checked": len(fixtures),
+        "event_requests": 0,
+        "fixture_events": 0,
+        "complete": 0,
+        "unavailable": 0,
+        "failed": 0,
+    }
+
+    for fixture in fixtures:
+        try:
+            raw_events = await client.fixture_events(fixture.provider_fixture_id)
+        except (ProviderRequestError, ProviderResponseError) as exc:
+            await repo.upsert_fixture_event_sync_status(
+                session,
+                fixture,
+                status="failed",
+                error_message=str(exc),
+                raw_payload={
+                    "source": "api_football_events_sync",
+                    "provider_fixture_id": fixture.provider_fixture_id,
+                },
+            )
+            synced["failed"] += 1
+            records_changed += 1
+            continue
+
+        synced["event_requests"] += 1
+        records_seen += len(raw_events)
+        event_count = await repo.replace_fixture_events(session, fixture, raw_events)
+        await repo.upsert_fixture_event_sync_status(
+            session,
+            fixture,
+            status="complete" if event_count else "unavailable",
+            event_count=event_count,
+            raw_payload={
+                "source": "api_football_events_sync",
+                "provider_fixture_id": fixture.provider_fixture_id,
+            },
+        )
+        synced["fixture_events"] += event_count
+        synced["complete" if event_count else "unavailable"] += 1
+        records_changed += event_count + 1
+
+    return {
+        "records_seen": records_seen,
+        "records_changed": records_changed,
+        "synced": synced,
+    }
 
 
 async def fixture_sync_status() -> dict[str, Any]:

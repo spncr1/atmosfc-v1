@@ -421,10 +421,7 @@ async def analysis_match(match_id: str) -> tuple[MatchSummary, list[MatchEvent]]
                 )
             ))
             events = list(fixture.events)
-            if not events and event_feed_status(fixture.event_sync_status) != "unavailable":
-                events = await hydrate_fixture_events(session, fixture)
-                await session.commit()
-            elif events and event_feed_status(fixture.event_sync_status) != "complete":
+            if events and event_feed_status(fixture.event_sync_status) != "complete":
                 sync_status = await repo.upsert_fixture_event_sync_status(
                     session,
                     fixture,

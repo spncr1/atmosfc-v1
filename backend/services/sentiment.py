@@ -223,14 +223,19 @@ def peak_bucket_minute(buckets: List[SentimentBucket]) -> int:
 def reaction_intensity_buckets(hour_scores: Dict[int, List[float]]) -> List[ReactionIntensityBucket]:
     # Return post-match hourly reaction intensity normalised to a 0-100 scale.
 
-    max_bucket_count = max((len(hour_scores[start]) for start, _ in REACTION_WINDOWS), default=0) or 1
+    max_bucket_count = max((len(hour_scores[start]) for start, _ in REACTION_WINDOWS), default=0)
+    if max_bucket_count <= 0:
+        return []
     buckets: List[ReactionIntensityBucket] = []
     for hour, _ in REACTION_WINDOWS:
         scores = hour_scores[hour]
         sentiment = mean(scores) if scores else 0.0
-        normalised_volume = (len(scores) / max_bucket_count) * 100
-        normalised_sentiment = ((sentiment + 1) / 2) * 100
-        intensity = (normalised_volume * 0.6) + (normalised_sentiment * 0.4)
+        if scores:
+            normalised_volume = (len(scores) / max_bucket_count) * 100
+            normalised_sentiment = ((sentiment + 1) / 2) * 100
+            intensity = (normalised_volume * 0.6) + (normalised_sentiment * 0.4)
+        else:
+            intensity = 0.0
         buckets.append(ReactionIntensityBucket(
             hour_offset=hour,
             intensity=round(max(0, min(100, intensity)), 2),
