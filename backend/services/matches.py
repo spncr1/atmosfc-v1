@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 import re
 from typing import Literal
 
@@ -18,8 +19,17 @@ from backend.providers.api_football import ApiFootballClient
 from backend.providers.errors import ProviderConfigError, ProviderRequestError, ProviderResponseError
 from backend.repositories import football_data as repo
 from backend.services.sync import ensure_archive_scope_synced
-from backend.services.team_search import competition_aliases_for, parse_search_intent, resolve_team_search, unique_ints
+from backend.services.team_search import (
+    ResolvedTeamSearch,
+    competition_aliases_for,
+    parse_search_intent,
+    resolve_team_search,
+    unique_ints,
+)
 from backend.services.team_visuals import ensure_team_visual_profiles, team_visual_response
+
+
+logger = logging.getLogger(__name__)
 
 
 class MatchDataError(RuntimeError):
@@ -229,24 +239,18 @@ async def search_matches(
     intent = parse_search_intent(query, competition_aliases=COMPETITION_SEARCH_ALIASES)
     effective_competition = competition or intent.competition_code
     provider_competition_id = provider_competition_id_for_code(effective_competition)
+    provider_notices: list[SearchNotice] = []
     try:
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
-            client = ApiFootballClient() if intent.should_resolve_team else None
-            resolved_team = await resolve_team_search(intent, session, client)
+            resolved_team = await resolve_team_search(intent, session, None)
             archive_scope = archive_scope_for(
                 intent_kind=intent.kind,
                 provider_team_ids=resolved_team.provider_team_ids,
                 provider_competition_id=provider_competition_id,
                 season_year=season,
             )
-            sync_result = await ensure_archive_scope_synced(
-                scope_type=archive_scope.scope_type,
-                provider_team_ids=archive_scope.provider_team_ids,
-                provider_competition_id=archive_scope.provider_competition_id,
-                season_year=archive_scope.season_year,
-                is_archive_addressable=archive_scope.is_archive_addressable,
-            )
+            sync_result = {}
             query_terms = query_terms_for_scope(intent.kind, resolved_team.query_terms, archive_scope)
             fixtures = await repo.search_fixtures(
                 session,
@@ -256,16 +260,59 @@ async def search_matches(
                 provider_competition_id=provider_competition_id,
                 season_year=season,
             )
+
+            provider_available = True
+            should_try_archive_refresh = (
+                not fixtures
+                and archive_scope.is_archive_addressable
+                and archive_scope.scope_type != "supported_all_seasons"
+            )
+            if should_try_archive_refresh and intent.should_resolve_team and not resolved_team.provider_team_ids:
+                try:
+                    resolved_team = await resolve_team_search(intent, session, ApiFootballClient())
+                    archive_scope = archive_scope_for(
+                        intent_kind=intent.kind,
+                        provider_team_ids=resolved_team.provider_team_ids,
+                        provider_competition_id=provider_competition_id,
+                        season_year=season,
+                    )
+                except (ProviderConfigError, ProviderRequestError, ProviderResponseError) as exc:
+                    logger.warning("API-Football team resolution failed; continuing with local search: %s", exc)
+                    resolved_team = ResolvedTeamSearch(provider_team_ids=[], query_terms=intent.query_terms)
+                    provider_notices.append(provider_refresh_unavailable_notice())
+                    provider_available = False
+
+            if should_try_archive_refresh and provider_available:
+                try:
+                    sync_result = await ensure_archive_scope_synced(
+                        scope_type=archive_scope.scope_type,
+                        provider_team_ids=archive_scope.provider_team_ids,
+                        provider_competition_id=archive_scope.provider_competition_id,
+                        season_year=archive_scope.season_year,
+                        is_archive_addressable=archive_scope.is_archive_addressable,
+                    )
+                except (ProviderConfigError, ProviderRequestError, ProviderResponseError) as exc:
+                    logger.warning("API-Football archive refresh failed; continuing with local search: %s", exc)
+                    provider_notices.append(provider_refresh_unavailable_notice())
+
+            if sync_result:
+                query_terms = query_terms_for_scope(intent.kind, resolved_team.query_terms, archive_scope)
+                fixtures = await repo.search_fixtures(
+                    session,
+                    query_text=query,
+                    query_terms=query_terms,
+                    provider_team_ids=resolved_team.provider_team_ids,
+                    provider_competition_id=provider_competition_id,
+                    season_year=season,
+                )
             visual_profiles = await visual_profiles_for_fixtures(session, fixtures)
             await session.commit()
     except SQLAlchemyError as exc:
         raise MatchDataError("Search results could not be loaded from the local database.") from exc
-    except (ProviderConfigError, ProviderRequestError, ProviderResponseError) as exc:
-        raise MatchDataError("Search identity could not be resolved through API-Football.") from exc
 
     return MatchSearchResult(
         matches=fixtures_to_summaries(fixtures, visual_profiles=visual_profiles),
-        notices=search_notices_from_sync_result(sync_result),
+        notices=[*provider_notices, *search_notices_from_sync_result(sync_result)],
     )
 
 
@@ -369,6 +416,14 @@ def search_notices_from_sync_result(sync_result: dict) -> list[SearchNotice]:
             ),
         )
     ]
+
+
+def provider_refresh_unavailable_notice() -> SearchNotice:
+    return SearchNotice(
+        type="provider_refresh_unavailable",
+        title="Live fixture refresh unavailable",
+        message="Showing matches already stored by Atmos FC. Newly completed fixtures may take longer to appear.",
+    )
 
 
 async def analysis_match(match_id: str) -> tuple[MatchSummary, list[MatchEvent]] | None:
