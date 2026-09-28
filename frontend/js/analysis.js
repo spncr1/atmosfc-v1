@@ -429,7 +429,7 @@ function eventTimelineMessage(status = "unchecked") {
   if (status === "unavailable") return "Match event timeline is unavailable from API-Football.";
   if (status === "failed") return "Match event data could not be refreshed right now.";
   if (status === "pending") return "Match event timeline is still syncing. Try again shortly.";
-  return "Match event timeline is still syncing. Try again shortly.";
+  return "Match event timeline has not been fetched yet. Try again shortly.";
 }
 
 function reactionUnavailableMessage() {

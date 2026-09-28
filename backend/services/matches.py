@@ -475,20 +475,8 @@ async def analysis_match(match_id: str) -> tuple[MatchSummary, list[MatchEvent]]
                     ),
                 )
             ))
-            events = list(fixture.events)
-            if events and event_feed_status(fixture.event_sync_status) != "complete":
-                sync_status = await repo.upsert_fixture_event_sync_status(
-                    session,
-                    fixture,
-                    status="complete",
-                    event_count=len(events),
-                    raw_payload={
-                        "source": "local_fixture_events",
-                        "provider_fixture_id": fixture.provider_fixture_id,
-                    },
-                )
-                fixture.event_sync_status = sync_status
-                await session.commit()
+            events = await ensure_fixture_events_for_analysis(session, fixture, list(fixture.events))
+            await session.commit()
 
             visual_profiles = await visual_profiles_for_fixtures(session, [fixture])
             await session.commit()
@@ -529,6 +517,54 @@ async def hydrate_fixture_events(session: AsyncSession, fixture: Fixture) -> lis
         .where(FixtureEvent.fixture_id == fixture.id)
     )
     return list(events)
+
+
+async def ensure_fixture_events_for_analysis(
+    session: AsyncSession,
+    fixture: Fixture,
+    events: list[FixtureEvent],
+) -> list[FixtureEvent]:
+    """Return stored events, fetching them on demand when analysis needs them."""
+
+    if events:
+        if event_feed_status(fixture.event_sync_status) != "complete":
+            sync_status = await repo.upsert_fixture_event_sync_status(
+                session,
+                fixture,
+                status="complete",
+                event_count=len(events),
+                raw_payload={
+                    "source": "local_fixture_events",
+                    "provider_fixture_id": fixture.provider_fixture_id,
+                },
+            )
+            fixture.event_sync_status = sync_status
+        return events
+
+    if event_feed_status(fixture.event_sync_status) == "unavailable":
+        return []
+
+    try:
+        return await hydrate_fixture_events(session, fixture)
+    except (ProviderConfigError, ProviderRequestError, ProviderResponseError) as exc:
+        sync_status = await repo.upsert_fixture_event_sync_status(
+            session,
+            fixture,
+            status="failed",
+            event_count=0,
+            error_message=str(exc),
+            raw_payload={
+                "source": "analysis_on_demand",
+                "provider_fixture_id": fixture.provider_fixture_id,
+            },
+        )
+        fixture.event_sync_status = sync_status
+        logger.warning(
+            "On-demand event hydration failed for fixture %s: %s",
+            fixture.provider_fixture_id,
+            exc,
+        )
+        return []
 
 
 def provider_competition_id_for_code(competition: str | None) -> int | None:
